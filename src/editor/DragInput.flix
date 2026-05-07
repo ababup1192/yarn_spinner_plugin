@@ -384,6 +384,9 @@ mod DragInput {
                             case EngineNode.TextureButtonWithState(btn, _) =>
                                 let cur = TextureButton.getSize(btn);
                                 cur#x != prev#x or cur#y != prev#y
+                            case EngineNode.RichTextLabelWithState(label, _) =>
+                                let cur = RichTextLabel.getSize(label);
+                                cur#x != prev#x or cur#y != prev#y
                             case _ => false
                         }
                         case None => false

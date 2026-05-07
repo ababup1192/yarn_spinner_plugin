@@ -149,6 +149,14 @@ mod EditableNode {
                             TextureButton.setSize(newSize, btn), st)
                     case None => engineNode
                 }
+            case EngineNode.RichTextLabelWithState(label, st) =>
+                match snapshot#prevSize {
+                    case Some(prev) =>
+                        let newSize = {x = prev#x * ratio#x, y = prev#y * ratio#y};
+                        EngineNode.RichTextLabelWithState(
+                            RichTextLabel.setSize(newSize, label), st)
+                    case None => engineNode
+                }
             case _ => engineNode
         }
 
@@ -175,6 +183,9 @@ mod EditableNode {
             case EngineNode.TextureButtonWithState(btn, _) =>
                 {key = "size",
                  value = SceneSerializer.FieldValue.VecValue(TextureButton.getSize(btn))} :: Nil
+            case EngineNode.RichTextLabelWithState(label, _) =>
+                {key = "size",
+                 value = SceneSerializer.FieldValue.VecValue(RichTextLabel.getSize(label))} :: Nil
             case _ => Nil
         }
 
@@ -216,6 +227,11 @@ mod EditableNode {
             case EngineNode.TextureButtonWithState(btn, _) => {
                 nodePath = nodePath, prevPosition = prevPos,
                 prevSize = Some(TextureButton.getSize(btn)),
+                prevFontSize = None, prevScale = None
+            }
+            case EngineNode.RichTextLabelWithState(label, _) => {
+                nodePath = nodePath, prevPosition = prevPos,
+                prevSize = Some(RichTextLabel.getSize(label)),
                 prevFontSize = None, prevScale = None
             }
             case _ => {
@@ -264,6 +280,14 @@ mod EditableNode {
                                 |> Node2D.setPosition(snapshot#prevPosition), st)
                     case None => withPos
                 }
+            case EngineNode.RichTextLabelWithState(label, st) =>
+                match snapshot#prevSize {
+                    case Some(sz) =>
+                        EngineNode.RichTextLabelWithState(
+                            RichTextLabel.setSize(sz, label)
+                                |> Node2D.setPosition(snapshot#prevPosition), st)
+                    case None => withPos
+                }
             case _ => withPos
         }
 
@@ -303,9 +327,16 @@ mod EditableNode {
             case EngineNode.TextureButtonWithState(btn, _) => Some(buttonRectInfo(btn))
             case EngineNode.Label2DWithState(label, _) => Some(labelRectInfo(label))
             case EngineNode.ColorRectWithState(rect, _) => Some(colorRectRectInfo(rect))
+            case EngineNode.RichTextLabelWithState(label, _) => Some(richTextLabelRectInfo(label))
             case EngineNode.CanvasLayerWithState(_, _) => canvasLayerRectInfo(path, scene)
             case _ => None
         }
+
+    /// RichTextLabel の表示矩形は内蔵の `size` フィールド（描画領域）。
+    /// position 原点 = 左上なので offset はゼロ
+    def richTextLabelRectInfo(label: RichTextLabel):
+            {size = Vec2.Vec2, topLeftOffset = Vec2.Vec2} =
+        {size = RichTextLabel.getSize(label), topLeftOffset = {x = 0.0, y = 0.0}}
 
     /// CanvasLayer の表示矩形を子ノードの bbox の和集合で計算する。
     /// 子は CanvasLayer ローカル座標（layer.position 起点）に居るので、
@@ -340,6 +371,7 @@ mod EditableNode {
             case EngineNode.TextureButtonWithState(btn, _) => Some(buttonRectInfo(btn))
             case EngineNode.Label2DWithState(label, _) => Some(labelRectInfo(label))
             case EngineNode.ColorRectWithState(rect, _) => Some(colorRectRectInfo(rect))
+            case EngineNode.RichTextLabelWithState(label, _) => Some(richTextLabelRectInfo(label))
             case _ => None
         }
 

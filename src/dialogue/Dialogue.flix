@@ -302,6 +302,13 @@ mod Dialogue {
             |> tickTransition(delta)
             |> tickElapsed(delta)
 
+    /// 1 フレーム分のイベント列を `applyEvent` で順に反映してから `tick(delta)` する。
+    /// Scene 側 `process` の標準パイプライン。`Dialogue.SceneView.Inbox.takeAll`
+    /// の結果をそのまま渡す想定。別 Scene 実装に差し替えても再利用できる。
+    pub def applyFrame(delta: Duration.Duration, events: List[ViewEvent], state: UIState): UIState =
+        List.foldLeft((s, event) -> applyEvent(event, s), state, events)
+            |> tick(delta)
+
     /// 表示中の経過時間を進める。点滅などのアニメーションに使う。
     def tickElapsed(delta: Duration.Duration, state: UIState): UIState =
         if (not state#visible) state

@@ -124,12 +124,12 @@ mod DialogueScene {
         }
 
     /// レイヤノードの `process` ライフサイクル。
-    /// 1. `Inbox.takeAll` で 1 フレーム分のイベントを取り出し、`Dialogue.applyEvent` で状態を進める
-    /// 2. `Dialogue.tick(dt)` で typewriter / transition / 経過秒を進める
-    /// 3. lines が増えたフレーム（新しい行が表示開始）で talk 効果音を鳴らす
-    /// 4. 継続 line の typewriter 完了などで `shouldAutoNext` が立っていれば
+    /// 1. `Inbox.takeAll` で 1 フレーム分のイベントを取り出し、`Dialogue.applyFrame`
+    ///    で状態に反映する（applyEvent 畳み込み + tick(delta) を一括）
+    /// 2. lines が増えたフレーム（新しい行が表示開始）で talk 効果音を鳴らす
+    /// 3. 継続 line の typewriter 完了などで `shouldAutoNext` が立っていれば
     ///    `Session.submitNext` を発火（次フレームの takeAll で取り込まれる）
-    /// 5. 新しい layer ノードと、本文 / transition / インジケータを更新した scene を返す
+    /// 4. 新しい layer ノードと、本文 / transition / インジケータを更新した scene を返す
     pub def process(delta: Duration.Duration,
                      layer: CanvasLayer,
                      state: Dialogue.UIState,
@@ -137,10 +137,7 @@ mod DialogueScene {
                      (EngineNode[NodeTag], Scene[NodeTag])
                      \ {Dialogue.SceneView.Inbox, Dialogue.Session, GameEngine.Audio} =
         let events = Dialogue.SceneView.Inbox.takeAll();
-        
-        let newState =
-            List.foldLeft((s, event) -> Dialogue.applyEvent(event, s), state, events)
-                |> Dialogue.tick(delta);
+        let newState = Dialogue.applyFrame(delta, events, state);
         // 行が新しく追加されたフレームで talk SE を頭から再生（自然減衰で勝手に止まる）
         if (List.length(newState#lines) > List.length(state#lines))
             GameEngine.Audio.playAudio("talk")
