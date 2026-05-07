@@ -126,13 +126,13 @@ mod Dialogue.Runner {
         List.map(toPresented, indexed)
 
     /// 行 ID と置換から view 用の PresentedLine に整形する。
-    /// 話者の取り出しは将来 Yarn 構文（"Speaker: text"）から分離する想定。
-    /// 当面は text 全体を text フィールドに入れる。
+    /// 話者は `Dialogue.extractSpeaker`（半角コロン区切り）で抽出する。
+    /// 別の表記法を採るシナリオでは、Runner を別実装にするか手前で正規化すること。
     def resolveLine(lineId: String, substitutions: List[String], compiledProject: YarnProject):
                      PresentedLine =
         let text = match Yarn.StringTable.resolve(lineId, substitutions, compiledProject#strings) {
             case Ok(resolved) => resolved
             case Err(_)       => lineId
         };
-        { lineId = lineId, text = text, speaker = None }
+        { lineId = lineId, text = text, speaker = Dialogue.extractSpeaker(text) }
 }

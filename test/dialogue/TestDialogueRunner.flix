@@ -44,14 +44,15 @@ mod TestDialogueRunner {
                 Dialogue.Session.submitAdvance()           // → dialogueComplete
             })
         };
+        let speaker = Some("おう");
         let expected: List[ViewEvent] =
-            Line("おう: ゆうしゃよ、よくぞ もどった！") ::
-            Line("おう: まおうを たおすのじゃ。") ::
+            Line("おう: ゆうしゃよ、よくぞ もどった！", speaker) ::
+            Line("おう: まおうを たおすのじゃ。", speaker) ::
             Options("はい" :: "いいえ" :: Nil) ::
-            Line("おう: たのもしいぞ。") ::
-            Line("おう: ＨＰは 0 ある。 きをつけてゆけ！") ::
+            Line("おう: たのもしいぞ。", speaker) ::
+            Line("おう: ＨＰは 0 ある。 きをつけてゆけ！", speaker) ::
             Command("wait 0.5") ::
-            Line("おう: …では、たびだちじゃ。") ::
+            Line("おう: …では、たびだちじゃ。", speaker) ::
             Complete :: Nil;
         Assert.assertEq(expected = expected, events)
 
@@ -76,7 +77,8 @@ mod TestDialogueRunner {
         };
         // 5 イベント目（index=4）が 1 度目と同じ「ゆうしゃよ…」になっているか
         let firstAndFifth = (List.nth(0, events), List.nth(4, events));
-        let expectedLine: ViewEvent = Line("おう: ゆうしゃよ、よくぞ もどった！");
+        let expectedLine: ViewEvent =
+            Line("おう: ゆうしゃよ、よくぞ もどった！", Some("おう"));
         let expected: (Option[ViewEvent], Option[ViewEvent]) =
             (Some(expectedLine), Some(expectedLine));
         Assert.assertEq(expected = expected, firstAndFifth)

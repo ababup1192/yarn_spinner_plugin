@@ -30,7 +30,7 @@ mod Dialogue.SceneView {
         let queue: MutDeque[ViewEvent, r] = MutDeque.empty(rc);
         run body() with handler Dialogue.DialogueView {
             def presentLine(line, resume) = {
-                MutDeque.pushBack(Line(line#text), queue);
+                MutDeque.pushBack(Line(line#text, line#speaker), queue);
                 resume()
             }
             def presentOptions(options, resume) = {

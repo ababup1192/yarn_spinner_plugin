@@ -14,7 +14,7 @@ mod Dialogue.StubView {
         let log: MutDeque[ViewEvent, r] = MutDeque.empty(rc);
         let result = run body() with handler Dialogue.DialogueView {
             def presentLine(line, resume) = {
-                MutDeque.pushBack(Line(line#text), log);
+                MutDeque.pushBack(Line(line#text, line#speaker), log);
                 resume()
             }
             def presentOptions(options, resume) = {

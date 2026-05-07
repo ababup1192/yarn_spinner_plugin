@@ -21,8 +21,7 @@ mod DialogueScene {
     /// レイヤ（CanvasLayer）の名前。
     pub def layerName(): String = "Dialogue"
 
-    def borderName(): String = "Border"
-    def innerName(): String = "Inner"
+    // 子ノード名は scene.json と一致させる（変更時は両方を更新）
     def bodyName(): String = "Body"
     def transitionName(): String = "Transition"
     def indicatorName(): String = "Indicator"
@@ -39,38 +38,20 @@ mod DialogueScene {
     pub def fontName(): String = "default"
 
     // ── レイアウト数値（design 単位 px、解像度 320×240 を想定）──
+    //
+    // ノードの配置・サイズ・色などの構築時の値は scene.json 側に固定値として持つ。
+    // ここに残るのは「ランタイム更新（updateTransition 等）で使う数値」だけ。
 
-    /// パネルを画面端から内側に取る margin（design px）。
-    def screenMargin(): Float64 = 16.0
+    /// シーン定義 JSON のパス。
+    def sceneJsonPath(): String = "src/scenes/DialogueScene.scene.json"
 
-    /// パネル全体のサイズ。viewport から margin を引いた幅 × 画面の約 30%。
-    /// 解像度 320×240 のとき 288 × 72。
-    def panelSize(viewport: {viewportWidth = Int32, viewportHeight = Int32}): Vec2.Vec2 = {
-        x = Int32.toFloat64(viewport#viewportWidth) - screenMargin() * 2.0,
-        y = Int32.toFloat64(viewport#viewportHeight) * 0.3
-    }
-
-    /// 白枠の太さ（design px）。
+    /// 白枠の太さ（design px）。scene.json の Inner / Body / Transition の position と
+    /// 揃っており、transition のスクロール開始 Y 計算でも使う。
     def borderWidth(): Float64 = 3.0
 
     /// 本文ノードの内側余白（白枠の内側からさらに引く design px）。
+    /// transition のスクロール開始 Y 計算で使う。
     def bodyInnerMargin(): Float64 = 6.0
-
-    /// 本文フォントサイズ（design 単位 px）。bake サイズ 16 と整数比 1:2 で縮小。
-    def bodyFontSize(): Float64 = 8.0
-
-    /// CanvasLayer の描画レイヤ番号（HUD として最前面に来る大きめ）。
-    def drawLayer(): Int32 = 10
-
-    /// 白枠 / 黒内側 / Transition / Body / Indicator の zIndex。
-    def borderZIndex(): Int32 = 0
-    def innerZIndex(): Int32 = 1
-    def transitionZIndex(): Int32 = 2
-    def bodyZIndex(): Int32 = 3
-    def indicatorZIndex(): Int32 = 4
-
-    /// 半透明黒背景の不透明度（0 = 完全透明、1 = 不透明）。
-    def innerAlpha(): Float32 = 0.85f32
 
     /// transition の上方向スクロール量（design px）。
     /// 行高さ × 行数（1 行 8 px × 3 行 = 24 px）でちょうど全行が body 上辺に達する。
@@ -80,87 +61,23 @@ mod DialogueScene {
     /// lineHeight ≈ font の em (16) を 0.5 倍した 8 px。transition のスナップ閾値計算に使う。
     def transitionLineHeight(): Float64 = 8.0
 
-    /// インジケータをパネル下端からどれだけ上にずらすか（design px）。
-    def indicatorBottomMargin(): Float64 = 4.0
-
     // ════════════════════════════════════════════════════════════════════════
     // (C) 構築
     // ════════════════════════════════════════════════════════════════════════
 
     /// 既存の Scene に対話レイヤを 1 枚積む。
-    /// 起動時の状態は `Dialogue.emptyState`（visible=false）なので、
-    /// 最初の `presentLine` がキューに入って `process` で反映されるまで何も表示されない。
-    pub def addDialogueLayer(viewport: {viewportWidth = Int32, viewportHeight = Int32},
-                              fontAtlas: FontAtlas,
-                              scene: Scene[NodeTag]): Scene[NodeTag] =
-        let panel = panelSize(viewport);
-        let panelOriginX = screenMargin();
-        let panelOriginY =
-            Int32.toFloat64(viewport#viewportHeight) - screenMargin() - panel#y;
-
-        let layer =
-            CanvasLayer.make(drawLayer())
-                |> Node2D.setPosition({x = panelOriginX, y = panelOriginY});
-
-        // 白枠（背面）
-        let border =
-            ColorRect.make(panel, {r = 1.0f32, g = 1.0f32, b = 1.0f32})
-                |> CanvasItem.setZIndex(borderZIndex());
-
-        // 黒内側（白枠の内側 borderWidth 分インセット）
-        let innerSize: Vec2.Vec2 = {
-            x = panel#x - borderWidth() * 2.0,
-            y = panel#y - borderWidth() * 2.0
-        };
-        let inner =
-            ColorRect.make(innerSize, {r = 0.0f32, g = 0.0f32, b = 0.0f32})
-                |> ColorRect.setAlpha(innerAlpha())
-                |> CanvasItem.setZIndex(innerZIndex())
-                |> Node2D.setPosition({x = borderWidth(), y = borderWidth()});
-
-        // 本文と transition は同じ位置・サイズ。transition は process で Y を動かす
-        let bodyOrigin: Vec2.Vec2 = {
-            x = borderWidth() + bodyInnerMargin(),
-            y = borderWidth() + bodyInnerMargin()
-        };
-        let bodySize: Vec2.Vec2 = {
-            x = innerSize#x - bodyInnerMargin() * 2.0,
-            y = innerSize#y - bodyInnerMargin() * 2.0
-        };
-
-        let body =
-            RichTextLabel.make("", fontAtlas, bodyFontSize(), bodySize)
-                |> CanvasItem.setZIndex(bodyZIndex())
-                |> Node2D.setPosition(bodyOrigin);
-
-        let transitionLabel =
-            RichTextLabel.make("", fontAtlas, bodyFontSize(), bodySize)
-                |> CanvasItem.setZIndex(transitionZIndex())
-                |> Node2D.setPosition(bodyOrigin);
-
-        // 続行待ちインジケータ ▼。パネル下部中央。Center 揃えなので position.x は中心点。
-        let indicator =
-            Label2D.make("", fontAtlas, bodyFontSize())
-                |> Label2D.setHorizontalAlignment(HorizontalAlignment.Center)
-                |> CanvasItem.setZIndex(indicatorZIndex())
-                |> Node2D.setPosition({
-                    x = panel#x / 2.0,
-                    y = panel#y - bodyFontSize() - indicatorBottomMargin()
-                });
-
-        scene
-            |> Scene.addNode(layerName(),
-                EngineNode.CanvasLayerWithState(layer, NodeTag.Dialogue(Dialogue.emptyState())))
-            |> Scene.addChild(layerName(), borderName(),
-                EngineNode.ColorRectWithState(border, NodeTag.NoTag))
-            |> Scene.addChild(layerName(), innerName(),
-                EngineNode.ColorRectWithState(inner, NodeTag.NoTag))
-            |> Scene.addChild(layerName(), transitionName(),
-                EngineNode.RichTextLabelWithState(transitionLabel, NodeTag.NoTag))
-            |> Scene.addChild(layerName(), bodyName(),
-                EngineNode.RichTextLabelWithState(body, NodeTag.NoTag))
-            |> Scene.addChild(layerName(), indicatorName(),
-                EngineNode.Label2DWithState(indicator, NodeTag.NoTag))
+    /// ノードツリーの構造（位置・サイズ・色など）は `DialogueScene.scene.json` に持つ。
+    /// scene.json は 320×240 の design 解像度を前提にした固定値で記述されている。
+    /// JSON 側はタグを持たず、ロード後に layer ノードへ
+    /// `NodeTag.Dialogue(emptyState(jrpgProfile))` を注入する（visible=false）。
+    /// scene.json のレイアウトが JRPG 風 3 行パネル前提なので profile も JRPG 固定で良い。
+    pub def addDialogueLayer(fontAtlas: FontAtlas,
+                              scene: Scene[NodeTag]):
+                              Scene[NodeTag] \ {GameEngine.Game, Fs.FileRead} =
+        SceneLoader.loadSceneWithFont(sceneJsonPath(), fontAtlas,
+            SceneLoader.constTagParser(NodeTag.NoTag), scene)
+            |> Scene.setState(layerPath(),
+                NodeTag.Dialogue(Dialogue.emptyState(Dialogue.jrpgProfile())))
 
     // ════════════════════════════════════════════════════════════════════════
     // (D) ロジック — 入力ディスパッチと process
@@ -248,11 +165,11 @@ mod DialogueScene {
 
     /// 続行 ▼ インジケータの表示/非表示を同期する。
     /// 表示すべきタイミング（typewriter 完了 + transition なし + line モード）かつ
-    /// blink 周期が ON のときだけ "▼" を入れる。それ以外は空文字で隠す。
+    /// blink 周期が ON のときだけインジケータ文字を入れる。それ以外は空文字で隠す。
     def updateIndicator(state: UIState, scene: Scene[NodeTag]): Scene[NodeTag] =
         let visible =
             Dialogue.shouldShowAdvanceIndicator(state) and Dialogue.isBlinkOn(state);
-        let text = if (visible) Dialogue.advanceIndicatorGlyph() else "";
+        let text = if (visible) state#profile#advanceIndicatorGlyph else "";
         Scene.mapEngineNode(indicatorPath(), engineNode ->
             EngineNode.mapLabel2D(label -> Label2D.setText(text, label), engineNode),
             scene)

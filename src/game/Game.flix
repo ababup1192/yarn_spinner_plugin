@@ -78,12 +78,11 @@ mod Game {
     // ════════════════════════════════════════════════════════════════════════
 
     /// 対話レイヤを 1 枚積んだ初期シーンを構築する。
-    def buildScene(): Scene[NodeTag] \ GameEngine.Game =
+    /// `addDialogueLayer` 自身が `DialogueScene.scene.json` を読みに行くので Fs.FileRead が必要。
+    def buildScene(): Scene[NodeTag] \ {GameEngine.Game, Fs.FileRead} =
         let fontAtlas = GameEngine.Game.getFontAtlas(DialogueScene.fontName());
         Scene.empty()
-            |> DialogueScene.addDialogueLayer(
-                {viewportWidth = designWi(), viewportHeight = designHi()},
-                fontAtlas)
+            |> DialogueScene.addDialogueLayer(fontAtlas)
 
     // ════════════════════════════════════════════════════════════════════════
     // start / gameLoop

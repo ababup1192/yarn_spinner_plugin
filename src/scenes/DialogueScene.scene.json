@@ -1,0 +1,52 @@
+{
+  "type": "CanvasLayer",
+  "name": "Dialogue",
+  "layer": 10,
+  "pos": [16, 152],
+  "children": [
+    {
+      "type": "ColorRect",
+      "name": "Border",
+      "pos": [0, 0],
+      "size": [288, 72],
+      "color": {"r": 1.0, "g": 1.0, "b": 1.0},
+      "zIndex": 0
+    },
+    {
+      "type": "ColorRect",
+      "name": "Inner",
+      "pos": [3, 3],
+      "size": [282, 66],
+      "color": {"r": 0.0, "g": 0.0, "b": 0.0},
+      "alpha": 0.85,
+      "zIndex": 1
+    },
+    {
+      "type": "RichTextLabel",
+      "name": "Transition",
+      "pos": [9, 9],
+      "size": [270, 54],
+      "text": "",
+      "fontSize": 8,
+      "zIndex": 2
+    },
+    {
+      "type": "RichTextLabel",
+      "name": "Body",
+      "pos": [9, 9],
+      "size": [270, 54],
+      "text": "",
+      "fontSize": 8,
+      "zIndex": 3
+    },
+    {
+      "type": "Label2D",
+      "name": "Indicator",
+      "pos": [144, 60],
+      "text": "",
+      "fontSize": 8,
+      "horizontalAlignment": "center",
+      "zIndex": 4
+    }
+  ]
+}

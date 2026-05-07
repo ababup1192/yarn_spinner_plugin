@@ -7,11 +7,12 @@
 ///   - 1 フレーム単位で受け渡す view イベント: `ViewEvent`
 ///   - 対話 UI の論理状態: `UIState` と、その純粋遷移（`applyEvent` /
 ///     `moveCursor` / `emptyState`）と表示用整形（`formatBody`）
+///   - ジャンルごとのリズム・寸法をまとめた `DialogueProfile` と既製 profile
+///     （`jrpgProfile` / `visualNovelProfile`）
 ///   - facade `withDialog`（Runner / WaitOnly / SceneView を 1 行で適用）
 ///
 /// 描画やノード木の知識は持たないので、別の Scene 実装に差し替えても再利用できる。
-/// 実装の handler 群は `Dialogue.Runner` / `Dialogue.Commands` /
-/// `Dialogue.SceneView` / `Dialogue.StubView` の各サブモジュールにある。
+/// JRPG / VN / その他の表現スタイルの違いは `DialogueProfile` の値で吸収する。
 mod Dialogue {
 
     // ════════════════════════════════════════════════════════════════════════
@@ -19,6 +20,8 @@ mod Dialogue {
     // ════════════════════════════════════════════════════════════════════════
 
     /// 表示用に整形された 1 行。`text` は置換マーカー解決済み。
+    /// `speaker` は表記から取り出した話者名。Runner / Scene が `extractSpeaker` を
+    /// 使って埋める想定だが、別の表記法を使うシナリオでは独自に詰めて良い。
     pub type alias PresentedLine = {
         lineId  = String,
         text    = String,
@@ -37,8 +40,8 @@ mod Dialogue {
     /// `SceneView` handler が `MutDeque` に積み、`Pump.drain` 経由で
     /// 1 フレーム分まとめて取り出される。`StubView` も同じ enum をテストログとして使う。
     pub enum ViewEvent with Eq, ToString {
-        /// `presentLine` 受信。表示すべき本文。
-        case Line(String)
+        /// `presentLine` 受信。本文と、表記から取り出した話者名（無ければ `None`）。
+        case Line(String, Option[String])
         /// `presentOptions` 受信。表示すべき選択肢のテキスト列。
         case Options(List[String])
         /// `dismissLine` 受信。表示中の行を消す。
@@ -56,23 +59,71 @@ mod Dialogue {
         progress = Float64
     }
 
+    /// ジャンルごとの「対話リズム・寸法」をまとめた値。
+    /// `UIState` が 1 つ保持し、純粋遷移はそこから読み出すことでコードの分岐を減らす。
+    /// Scene 構築時に `jrpgProfile()` / `visualNovelProfile()` から選ぶか、
+    /// 個別フィールドを上書きしてカスタムプロファイルを作る。
+    ///
+    /// フィールド:
+    ///   - `maxLinesPerPanel`: 1 パネルに溜める最大行数。1 で行ごとパネル切替（VN 風）
+    ///   - `breakOnSpeakerLine`: 名前 prefix 付き Line を「新パネル + 確定キー待ち」扱いにするか。
+    ///       false なら名前 prefix は単なる装飾（log スタイル等）
+    ///   - `autoAdvanceContinuation`: 継続行で typewriter 完了時に自動で次へ進めるか。
+    ///       false なら毎行確定キーが要る（VN 風）
+    ///   - `transitionDurationSeconds`: パネル切り替え演出の継続時間（秒）
+    ///   - `revealCharsPerSecond`: typewriter の送出速度（文字 / 秒）
+    ///   - `blinkPeriodSeconds`: 続行待ちインジケータの点滅 1 サイクル長（秒）。半周期で ON/OFF 切替
+    ///   - `advanceIndicatorGlyph`: 続行待ちインジケータの表示記号。描画側で表示可能なフォントを用意する
+    pub type alias DialogueProfile = {
+        maxLinesPerPanel          = Int32,
+        breakOnSpeakerLine        = Bool,
+        autoAdvanceContinuation   = Bool,
+        transitionDurationSeconds = Float64,
+        revealCharsPerSecond      = Float64,
+        blinkPeriodSeconds        = Float64,
+        advanceIndicatorGlyph     = String
+    }
+
+    /// JRPG 風（3 行パネル / 名前 prefix で待機 / 継続行は自動送り / "▼" 点滅）。
+    pub def jrpgProfile(): DialogueProfile = {
+        maxLinesPerPanel          = 3,
+        breakOnSpeakerLine        = true,
+        autoAdvanceContinuation   = true,
+        transitionDurationSeconds = 0.6,
+        revealCharsPerSecond      = 40.0,
+        blinkPeriodSeconds        = 0.5,
+        advanceIndicatorGlyph     = "▼"
+    }
+
+    /// ビジュアルノベル風（1 行 1 パネル / 毎行確定キー待ち / 軽い演出）。
+    pub def visualNovelProfile(): DialogueProfile = {
+        maxLinesPerPanel          = 1,
+        breakOnSpeakerLine        = false,
+        autoAdvanceContinuation   = false,
+        transitionDurationSeconds = 0.2,
+        revealCharsPerSecond      = 50.0,
+        blinkPeriodSeconds        = 0.5,
+        advanceIndicatorGlyph     = "▼"
+    }
+
     /// 対話 UI の論理状態。Scene 表現（CanvasLayer / RichTextLabel など）から
     /// 独立した純粋データなので、別の描画実装に差し替えても再利用できる。
     ///
     /// 設計:
-    ///   - `lines` は同じ話者の発話を `maxLinesPerPanel` まで蓄積する（古→新）
-    ///   - 名前 prefix が付いた Line / 上限超え / Options / Complete は新パネル化扱い：
+    ///   - `lines` は同じ話者の発話を `profile#maxLinesPerPanel` まで蓄積する（古→新）
+    ///   - `profile#breakOnSpeakerLine` が true の場合、名前 prefix 付き Line は新パネル化扱い：
     ///     - 旧 lines を `transition` に退避してスクロールアウトする
     ///     - 適用したいイベント本体は `pendingEvent` に保留しておき、transition が
-    ///       完了してから `applyEventInner` で実際に反映する → 「0.6 秒経つまで
-    ///       次の文章は出さない」を実現
+    ///       完了してから `applyEventInner` で実際に反映する
+    ///       （= 演出が終わるまで次の文章は出さない）
+    ///   - 上限超え / Options / Complete も同じく新パネル化扱い
     ///   - 名前なし継続 Line のあとは `lastLineHadName = false`。typewriter 完了時に
-    ///     `shouldAutoAdvance` が true になり、Scene 側 process が自動 submitAdvance
-    ///     を呼ぶ → 「複数行のときは決定キー不要で勝手に出る」を実現
+    ///     `profile#autoAdvanceContinuation` が true なら `shouldAutoAdvance` が true になり、
+    ///     Scene 側 process が自動 submitAdvance を呼ぶ
     ///   - typewriter は `lines` 全体（連続文字列扱い）にかかる
     pub type alias UIState = {
-        speaker         = Option[String],     // 現在のパネルの話者（"おう" 等）
-        lines           = List[String],       // 蓄積中の発話（古→新、最大 maxLinesPerPanel）
+        speaker         = Option[String],     // 現在のパネルの話者（":" の左側から抽出）
+        lines           = List[String],       // 蓄積中の発話（古→新）
         options         = List[String],       // 選択肢中なら non-empty
         cursor          = Int32,              // options 内の選択中 index（0 始まり）
         visible         = Bool,               // 完了後 / 未開始は false
@@ -80,31 +131,16 @@ mod Dialogue {
         elapsed         = Float64,            // 表示中の経過秒（点滅用）
         lastLineHadName = Bool,               // 最新 line に名前 prefix が付いていたか
         transition      = Option[Transition], // 直前パネルのスクロール演出
-        pendingEvent    = Option[ViewEvent]   // transition 完了後に適用するイベント
+        pendingEvent    = Option[ViewEvent],  // transition 完了後に適用するイベント
+        profile         = DialogueProfile     // ジャンルごとのリズム・寸法
     }
-
-    /// typewriter のデフォルト送出速度（文字/秒）。
-    /// テキスト送りが遅いと感じる場合は数値を上げる。
-    def defaultRevealCharsPerSecond(): Float64 = 40.0
-
-    /// 1 つのパネルに溜められる行数（ドラクエ風 3 行）。
-    pub def maxLinesPerPanel(): Int32 = 3
-
-    /// スクロール/フェード演出の継続時間（秒）。"がしゃん" と入れ替わる遅めの演出。
-    pub def transitionDurationSeconds(): Float64 = 0.6
-
-    /// ▼ 続行インジケータの点滅 1 サイクル長（秒）。半周期で ON/OFF が切り替わる。
-    def blinkPeriodSeconds(): Float64 = 0.5
-
-    /// ▼ 続行インジケータの記号。bake 範囲に 0x25BC として登録済み。
-    pub def advanceIndicatorGlyph(): String = "▼"
 
     // ════════════════════════════════════════════════════════════════════════
     // UIState の純粋遷移と整形
     // ════════════════════════════════════════════════════════════════════════
 
-    /// 初期状態（未開始 = 非表示）。
-    pub def emptyState(): UIState = {
+    /// 初期状態（未開始 = 非表示）。`profile` で表現スタイルを選ぶ。
+    pub def emptyState(profile: DialogueProfile): UIState = {
         speaker = None,
         lines = Nil,
         options = Nil,
@@ -114,12 +150,14 @@ mod Dialogue {
         elapsed = 0.0,
         lastLineHadName = false,
         transition = None,
-        pendingEvent = None
+        pendingEvent = None,
+        profile = profile
     }
 
     /// `text` の "<speaker>:" 部分を取り出す。コロンが無ければ `None`。
-    /// 全角コロン `：` には対応しない（fixture が ASCII `:` を使っているため）。
-    def extractSpeaker(text: String): Option[String] =
+    /// 区切りは Yarn の慣例に合わせ半角 `:` のみ。全角コロン `：` を使う場合は
+    /// 呼び出し側で正規化するか、独自の抽出関数で `PresentedLine#speaker` を埋める。
+    pub def extractSpeaker(text: String): Option[String] =
         let indexed = List.zipWithIndex(String.toList(text));
         match List.find(match (_, c) -> c == ':', indexed) {
             case Some((idx, _)) =>
@@ -143,9 +181,9 @@ mod Dialogue {
     def eventStartsNewPanel(event: ViewEvent, state: UIState): Bool =
         if (List.isEmpty(state#lines)) false
         else match event {
-            case ViewEvent.Line(text) =>
-                Option.nonEmpty(extractSpeaker(text))
-                or List.length(state#lines) >= maxLinesPerPanel()
+            case ViewEvent.Line(_, speaker) =>
+                (state#profile#breakOnSpeakerLine and Option.nonEmpty(speaker))
+                or List.length(state#lines) >= state#profile#maxLinesPerPanel
             case ViewEvent.Options(_) => true
             case ViewEvent.Complete   => true
             case ViewEvent.Dismiss    => false
@@ -166,25 +204,25 @@ mod Dialogue {
            elapsed = state#elapsed,
            lastLineHadName = state#lastLineHadName,
            transition = nextTransition,
-           pendingEvent = Some(event) }
+           pendingEvent = Some(event),
+           profile = state#profile }
 
     /// transition を伴わない実適用ロジック。
     /// `applyEvent` 直接呼び出し（lines 空 / 継続 line / Dismiss / Command）と、
     /// `tickTransition` 完了後の `pendingEvent` 反映の両方から呼ばれる。
     def applyEventInner(event: ViewEvent, state: UIState): UIState =
         match event {
-            case ViewEvent.Line(text)       => acceptLineInner(text, state)
-            case ViewEvent.Options(options) => startOptionsInner(options, state)
-            case ViewEvent.Dismiss          => state
-            case ViewEvent.Command(_)       => state
-            case ViewEvent.Complete         =>
-                { elapsed = state#elapsed | emptyState() }
+            case ViewEvent.Line(text, speaker) => acceptLineInner(text, speaker, state)
+            case ViewEvent.Options(options)    => startOptionsInner(options, state)
+            case ViewEvent.Dismiss             => state
+            case ViewEvent.Command(_)          => state
+            case ViewEvent.Complete            =>
+                { elapsed = state#elapsed | emptyState(state#profile) }
         }
 
     /// transition なしで Line を反映する。lines 空なら新規行として、非空なら append として扱う。
     /// （新パネルが必要な状況は `applyEvent` 側で `pendingEvent` に逃がしている）
-    def acceptLineInner(text: String, state: UIState): UIState =
-        let speaker = extractSpeaker(text);
+    def acceptLineInner(text: String, speaker: Option[String], state: UIState): UIState =
         let hasName = Option.nonEmpty(speaker);
         if (List.isEmpty(state#lines))
             // 初回 / transition 後の最初の行
@@ -197,7 +235,8 @@ mod Dialogue {
                elapsed = state#elapsed,
                lastLineHadName = hasName,
                transition = state#transition,
-               pendingEvent = None }
+               pendingEvent = None,
+               profile = state#profile }
         else
             // 継続 line（名前なし & 上限内）。typewriter は連続のまま。
             { speaker = state#speaker,
@@ -209,7 +248,8 @@ mod Dialogue {
                elapsed = state#elapsed,
                lastLineHadName = false,
                transition = state#transition,
-               pendingEvent = None }
+               pendingEvent = None,
+               profile = state#profile }
 
     /// transition なしで Options を反映する。
     def startOptionsInner(options: List[String], state: UIState): UIState =
@@ -222,7 +262,8 @@ mod Dialogue {
            elapsed = state#elapsed,
            lastLineHadName = false,
            transition = state#transition,
-           pendingEvent = None }
+           pendingEvent = None,
+           profile = state#profile }
 
     /// `delta` だけカーソルを動かした状態を返す。
     /// 範囲外は wrap-around（先頭から末尾へ、末尾から先頭へ）。
@@ -265,19 +306,19 @@ mod Dialogue {
         else {
             let cap = Int32.toFloat64(totalCharCount(state));
             let advanced =
-                state#revealProgress + deltaSeconds * defaultRevealCharsPerSecond();
+                state#revealProgress + deltaSeconds * state#profile#revealCharsPerSecond;
             { revealProgress = Float64.min(cap, advanced) | state }
         }
 
     /// transition の `progress` を進め、1.0 を超えたら `None` に戻す。
     /// ちょうど完了したフレームで `pendingEvent` を `applyEventInner` で反映する
-    /// （= 「0.6 秒経つまで次の文章は出さない」を実現するゲート）。
+    /// （= 演出が終わるまで次の文章は出さないというゲート）。
     def tickTransition(deltaSeconds: Float64, state: UIState): UIState =
         match state#transition {
             case None => state
             case Some(transition) =>
                 let advanced =
-                    transition#progress + deltaSeconds / transitionDurationSeconds();
+                    transition#progress + deltaSeconds / state#profile#transitionDurationSeconds;
                 if (advanced >= 1.0) {
                     let cleared = { transition = None | state };
                     match state#pendingEvent {
@@ -348,25 +389,28 @@ mod Dialogue {
             and not List.isEmpty(state#lines)
 
     /// **ユーザの確定キーを待っている** 状況なら true。
-    /// 名前 prefix が付いた最新 line（=パネルの締め行）か、上限まで埋まった panel が対象。
+    /// 「名前 prefix の Line で締められた panel」または「上限まで埋まった panel」が対象。
+    /// `profile#breakOnSpeakerLine` が false なら名前 prefix は無視され、
+    /// 上限ベースの判定だけになる。
     pub def shouldShowAdvanceIndicator(state: UIState): Bool =
         isPanelIdle(state)
-            and (state#lastLineHadName
-                 or List.length(state#lines) >= maxLinesPerPanel())
+            and ((state#profile#breakOnSpeakerLine and state#lastLineHadName)
+                 or List.length(state#lines) >= state#profile#maxLinesPerPanel)
 
     /// **自動で次の Line に進む** べき状況なら true。
-    /// 名前なし継続 line のあと、まだ panel に余裕があるとき。
-    /// Scene 側 process がこれを見て `Session.submitAdvance` を呼ぶ。
+    /// `profile#autoAdvanceContinuation` が true で、名前 prefix なしの継続行のあと、
+    /// まだ panel に余裕があるとき。Scene 側 process がこれを見て `Session.submitAdvance` を呼ぶ。
     pub def shouldAutoAdvance(state: UIState): Bool =
         isPanelIdle(state)
-            and not state#lastLineHadName
-            and List.length(state#lines) < maxLinesPerPanel()
+            and state#profile#autoAdvanceContinuation
+            and not (state#profile#breakOnSpeakerLine and state#lastLineHadName)
+            and List.length(state#lines) < state#profile#maxLinesPerPanel
 
     /// 点滅インジケータの ON/OFF を `elapsed` から決める。
-    /// 半周期ごとに切り替わる（`blinkPeriodSeconds` × 2 で 1 サイクル）。
+    /// 半周期ごとに切り替わる（`profile#blinkPeriodSeconds` × 2 で 1 サイクル）。
     pub def isBlinkOn(state: UIState): Bool =
         let cycles =
-            Float64.floor(state#elapsed / blinkPeriodSeconds())
+            Float64.floor(state#elapsed / state#profile#blinkPeriodSeconds)
                 |> Float64.tryToInt32
                 |> Option.getWithDefault(0);
         Int32.modulo(cycles, 2) == 0
