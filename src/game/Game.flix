@@ -90,19 +90,16 @@ mod Game {
     // start / gameLoop
     // ════════════════════════════════════════════════════════════════════════
 
-    /// ゲーム起動エントリ。`initialHp` で Yarn 変数 `$hp` の初期値を外から注入する。
-    /// fixture 側のデフォルトは 0 のため、注入しないと「HP 0 ある」表示になる。
+    /// ゲーム起動エントリ。`$hp` 等の変数初期値は yarn の `<<declare>>` に従う。
     ///
     /// 対話関連の handler 連結（Runner / WaitOnly / SceneView+Inbox）は
     /// `Dialogue.withDialog` に閉じ込めてあり、region / event queue は外には漏れない。
     /// `Editor.withState(rc)` で F1 トグル + ホットリロード監視 + EditHistory(undo) を注入する。
-    pub def start(initialHp: Int32):
+    pub def start():
             Unit \ {GameEngine.Game, GameEngine.Audio, Fs.FileRead, Fs.FileWrite,
                     Fs.Glob, Fs.ModificationTime, IO, Chan, NonDet} =
         // 注意: Flix では `project` は予約語のため変数名に使えない。
-        let yarnProject =
-            loadProject()
-                |> Yarn.overrideInitialFloat("\$hp", Int32.toFloat64(initialHp));
+        let yarnProject = loadProject();
         let fontAtlas = GameEngine.Game.getFontAtlas(DialogueScene.fontName());
         region rc {
             run {

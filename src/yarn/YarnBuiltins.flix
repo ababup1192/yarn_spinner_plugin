@@ -4,15 +4,23 @@
 /// 結果は新しい `Value` を返し、VM がスタックに push する。
 ///
 /// 現状サポート:
-///   - `visited(nodeName)`         -> Bool   訪問済みか
-///   - `visited_count(nodeName)`   -> Float  訪問回数
-///   - `Number.EqualTo(a, b)`      -> Bool   数値等価
-///   - `Number.NotEqualTo(a, b)`   -> Bool
-///   - `Number.GreaterThan(a, b)`  -> Bool
-///   - `Number.LessThan(a, b)`     -> Bool
-///   - `Bool.And(a, b)`            -> Bool
-///   - `Bool.Or(a, b)`             -> Bool
-///   - `Bool.Not(a)`               -> Bool
+///   - `visited(nodeName)`                 -> Bool   訪問済みか
+///   - `visited_count(nodeName)`           -> Float  訪問回数
+///   - `Number.Add(a, b)`                  -> Float  a + b
+///   - `Number.Minus(a, b)`                -> Float  a - b（注: ysc は Subtract ではなく Minus を吐く）
+///   - `Number.EqualTo(a, b)`              -> Bool   数値等価
+///   - `Number.NotEqualTo(a, b)`           -> Bool
+///   - `Number.GreaterThan(a, b)`          -> Bool
+///   - `Number.GreaterThanOrEqualTo(a, b)` -> Bool
+///   - `Number.LessThan(a, b)`             -> Bool
+///   - `Number.LessThanOrEqualTo(a, b)`    -> Bool
+///   - `Bool.And(a, b)`                    -> Bool
+///   - `Bool.Or(a, b)`                     -> Bool
+///   - `Bool.Not(a)`                       -> Bool
+///   - `has_item(itemId)`                  -> Bool   `$inv_<itemId>` 変数を Bool として読む。
+///                                                    インベントリは `<<item add X>>` 等の
+///                                                    カスタムコマンド側で `$inv_X = true` を
+///                                                    同期させる規約。
 ///
 /// 訪問カウンタは `$Yarn.Internal.Visiting.<nodeName>` という変数に格納されている前提。
 /// VM の `RunNode` がこれを +1 する（`Yarn.VariableStorage.incrementFloat`）。
@@ -34,6 +42,12 @@ mod Yarn.Builtins {
             case ("visited_count", StringV(nodeName) :: Nil) =>
                 Ok(FloatV(visitedCountOf(nodeName, storage)))
 
+            case ("Number.Add", FloatV(a) :: FloatV(b) :: Nil) =>
+                Ok(FloatV(a + b))
+
+            case ("Number.Minus", FloatV(a) :: FloatV(b) :: Nil) =>
+                Ok(FloatV(a - b))
+
             case ("Number.EqualTo", FloatV(a) :: FloatV(b) :: Nil) =>
                 Ok(BoolV(a == b))
 
@@ -43,8 +57,14 @@ mod Yarn.Builtins {
             case ("Number.GreaterThan", FloatV(a) :: FloatV(b) :: Nil) =>
                 Ok(BoolV(a > b))
 
+            case ("Number.GreaterThanOrEqualTo", FloatV(a) :: FloatV(b) :: Nil) =>
+                Ok(BoolV(a >= b))
+
             case ("Number.LessThan", FloatV(a) :: FloatV(b) :: Nil) =>
                 Ok(BoolV(a < b))
+
+            case ("Number.LessThanOrEqualTo", FloatV(a) :: FloatV(b) :: Nil) =>
+                Ok(BoolV(a <= b))
 
             case ("Bool.And", BoolV(a) :: BoolV(b) :: Nil) =>
                 Ok(BoolV(a and b))
@@ -54,6 +74,9 @@ mod Yarn.Builtins {
 
             case ("Bool.Not", BoolV(a) :: Nil) =>
                 Ok(BoolV(not a))
+
+            case ("has_item", StringV(itemId) :: Nil) =>
+                Ok(BoolV(invFlagOf(itemId, storage)))
 
             case _ =>
                 Err("unknown or mistyped builtin: ${name} (${List.length(arguments)} args)")
@@ -65,5 +88,13 @@ mod Yarn.Builtins {
         match Yarn.VariableStorage.get(key, storage) {
             case Some(FloatV(n)) => n
             case _               => 0.0
+        }
+
+    /// インベントリのミラー Bool 変数 `$inv_<itemId>` を読む。未設定は false 扱い。
+    def invFlagOf(itemId: String, storage: VariableStorage[r]): Bool \ r =
+        let key = "\$inv_${itemId}";
+        match Yarn.VariableStorage.get(key, storage) {
+            case Some(BoolV(b)) => b
+            case _              => false
         }
 }

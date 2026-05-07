@@ -45,4 +45,59 @@ mod TestYarnBuiltins {
             let expectedDiffer: Result[String, Value] = Ok(BoolV(false));
             Assert.assertEq(expected = (expectedSame, expectedDiffer), (same, differ))
         }
+
+    /// `Number.Add` / `Number.Minus` は四則の和差を返す。ysc は `+` を Add に、
+    /// `-` を **Subtract ではなく Minus** に降ろす点に注意。
+    @Test
+    def testNumberAddAndMinus(): Unit \ Assert =
+        region rc {
+            let storage = Yarn.VariableStorage.init(rc, Map.empty());
+            let added   = Yarn.Builtins.call(
+                "Number.Add", FloatV(7.0) :: FloatV(3.0) :: Nil, storage);
+            let minused = Yarn.Builtins.call(
+                "Number.Minus", FloatV(100.0) :: FloatV(25.0) :: Nil, storage);
+            let expectedAdd: Result[String, Value]   = Ok(FloatV(10.0));
+            let expectedMinus: Result[String, Value] = Ok(FloatV(75.0));
+            Assert.assertEq(expected = (expectedAdd, expectedMinus), (added, minused))
+        }
+
+    /// `Number.LessThanOrEqualTo` / `Number.GreaterThanOrEqualTo` の境界値挙動。
+    /// 同値で true、片側で false を 1 ケースで確認する。
+    @Test
+    def testNumberOrEqualBoundaries(): Unit \ Assert =
+        region rc {
+            let storage = Yarn.VariableStorage.init(rc, Map.empty());
+            let leEq = Yarn.Builtins.call(
+                "Number.LessThanOrEqualTo", FloatV(5.0) :: FloatV(5.0) :: Nil, storage);
+            let leGt = Yarn.Builtins.call(
+                "Number.LessThanOrEqualTo", FloatV(6.0) :: FloatV(5.0) :: Nil, storage);
+            let geEq = Yarn.Builtins.call(
+                "Number.GreaterThanOrEqualTo", FloatV(5.0) :: FloatV(5.0) :: Nil, storage);
+            let geLt = Yarn.Builtins.call(
+                "Number.GreaterThanOrEqualTo", FloatV(4.0) :: FloatV(5.0) :: Nil, storage);
+            let expected: (Result[String, Value], Result[String, Value],
+                           Result[String, Value], Result[String, Value]) =
+                (Ok(BoolV(true)), Ok(BoolV(false)), Ok(BoolV(true)), Ok(BoolV(false)));
+            Assert.assertEq(expected = expected, (leEq, leGt, geEq, geLt))
+        }
+
+    /// `has_item` は `$inv_<itemId>` の Bool を読む規約。
+    /// 未設定は false、true を立てたら true、false を立てたら false。
+    @Test
+    def testHasItemFollowsInvVariable(): Unit \ Assert =
+        region rc {
+            let storage = Yarn.VariableStorage.init(rc, Map.empty());
+            let before = Yarn.Builtins.call(
+                "has_item", StringV("key") :: Nil, storage);
+            Yarn.VariableStorage.set("\$inv_key", BoolV(true), storage);
+            let after  = Yarn.Builtins.call(
+                "has_item", StringV("key") :: Nil, storage);
+            Yarn.VariableStorage.set("\$inv_key", BoolV(false), storage);
+            let dropped = Yarn.Builtins.call(
+                "has_item", StringV("key") :: Nil, storage);
+            let expected: (Result[String, Value], Result[String, Value],
+                           Result[String, Value]) =
+                (Ok(BoolV(false)), Ok(BoolV(true)), Ok(BoolV(false)));
+            Assert.assertEq(expected = expected, (before, after, dropped))
+        }
 }

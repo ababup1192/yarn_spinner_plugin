@@ -11,8 +11,8 @@ mod Yarn.VM {
                     OptionEntry, CallFrame}
     use Yarn.Types.Value.{BoolV, FloatV, StringV}
     use Yarn.Types.Instruction.{RunLine, AddOption, ShowOptions, JumpIfFalse, JumpTo,
-                                 PeekAndJump, Pop, Return, PushString, PushFloat,
-                                 PushVariable, StoreVariable, CallFunc, RunCommand, RunNode}
+                                 PeekAndJump, Pop, Return, Stop, PushString, PushFloat, PushBool,
+                                 PushVariable, StoreVariable, CallFunc, RunCommand, RunNode, Detour}
     use Yarn.VariableStorage.VariableStorage
 
     /// step が外部入力待ちで停止しているときの内部マーカー。
@@ -206,12 +206,21 @@ mod Yarn.VM {
                         StepResult.NodeComplete
                 }
 
+            case Stop =>
+                clearDeque(vm#callStack);
+                Ref.put(None, vm#currentNode);
+                StepResult.DialogueComplete
+
             case PushString(value) =>
                 MutDeque.pushBack(StringV(value), vm#stack);
                 StepResult.Running
 
             case PushFloat(value) =>
                 MutDeque.pushBack(FloatV(value), vm#stack);
+                StepResult.Running
+
+            case PushBool(value) =>
+                MutDeque.pushBack(BoolV(value), vm#stack);
                 StepResult.Running
 
             case PushVariable(name) =>
@@ -246,6 +255,16 @@ mod Yarn.VM {
                 StepResult.WaitingCommand(resolvedText)
 
             case RunNode(targetNodeName) =>
+                // `<<jump>>` 由来: 戻り先を積まずに currentNode を置き換える。
+                Ref.put(Some(targetNodeName), vm#currentNode);
+                Ref.put(0, vm#instructionPointer);
+                Yarn.VariableStorage.incrementFloat(
+                    "\$Yarn.Internal.Visiting.${targetNodeName}",
+                    vm#variables);
+                StepResult.Running
+
+            case Detour(targetNodeName) =>
+                // `<<detour>>` 由来: 戻り先を callStack に積んでから移動。
                 let returnNode = match Ref.get(vm#currentNode) {
                     case Some(name) => name
                     case None       => ""

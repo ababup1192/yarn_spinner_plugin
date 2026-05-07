@@ -112,6 +112,61 @@ mod TestYarnVM {
         Assert.assertEq(expected = "line:reached", lineRef)
 
     // ========================================================================
+    // PushBool: 真偽リテラルがスタック・変数に伝播する
+    // ========================================================================
+
+    /// `<<set $brave = true>>` 由来の `pushBool true; storeVariable $brave; pop`
+    /// が走ると、`$brave` が BoolV(true) として読めるようになる。
+    /// 命令列:
+    ///   0. pushBool true
+    ///   1. storeVariable "$brave"
+    ///   2. pop
+    ///   3. return
+    @Test
+    def testPushBoolStoresTrueIntoVariable(): Unit \ Assert =
+        let instructions =
+            "[" +
+            "{\"pushBool\":{\"value\":true}}," +
+            "{\"storeVariable\":{\"variableName\":\"\$brave\"}}," +
+            "{\"pop\":{}}," +
+            "{\"return\":{}}" +
+            "]";
+        let loaded = buildProject("Main", instructions);
+        let stored = region rc {
+            let vm = Yarn.VM.init(rc, loaded, "Main");
+            discard Yarn.VM.step(vm); // pushBool
+            discard Yarn.VM.step(vm); // storeVariable
+            discard Yarn.VM.step(vm); // pop
+            Yarn.VariableStorage.get("\$brave", vm#variables)
+        };
+        Assert.assertEq(expected = Some(BoolV(true)), stored)
+
+    /// `pushBool false` のあと `jumpIfFalse` が分岐に乗る — 真偽値の peek が
+    /// `pushFloat` ではなく `pushBool` 経由でも正しく機能することの確認。
+    /// 命令列:
+    ///   0. pushBool false
+    ///   1. jumpIfFalse 3
+    ///   2. runLine "line:skipped"  (来ない)
+    ///   3. return
+    @Test
+    def testPushBoolFalseTriggersJumpIfFalse(): Unit \ Assert =
+        let instructions =
+            "[" +
+            "{\"pushBool\":{\"value\":false}}," +
+            "{\"jumpIfFalse\":{\"destination\":3}}," +
+            "{\"runLine\":{\"lineID\":\"line:skipped\",\"substitutionCount\":0}}," +
+            "{\"return\":{}}" +
+            "]";
+        let loaded = buildProject("Main", instructions);
+        let label = region rc {
+            let vm = Yarn.VM.init(rc, loaded, "Main");
+            discard Yarn.VM.step(vm); // pushBool false
+            discard Yarn.VM.step(vm); // jumpIfFalse → ip=3
+            stepResultLabel(Yarn.VM.step(vm))
+        };
+        Assert.assertEq(expected = "DialogueComplete", label)
+
+    // ========================================================================
     // RunNode: callStack に戻り先を積み、訪問カウンタを 1 上げる
     // ========================================================================
 
@@ -152,4 +207,116 @@ mod TestYarnVM {
         let expectedMain: Result[String, Value] = Ok(FloatV(1.0));
         let expectedSub: Result[String, Value]  = Ok(FloatV(1.0));
         Assert.assertEq(expected = (expectedMain, expectedSub), counts)
+
+    // ========================================================================
+    // RunNode は jump-style: 戻り先を積まない
+    // ========================================================================
+
+    /// `<<jump Sub>>` 由来の runNode は callStack を積まない。Sub の return で
+    /// dialogue 全体が完了する（Main へは戻らない）。
+    /// 命令列（Main）:
+    ///   0. runNode "Sub"
+    ///   1. runLine "line:should-not-run"   (戻ってきたら誤検出される行)
+    ///   2. return
+    /// 命令列（Sub）:
+    ///   0. return
+    @Test
+    def testRunNodeDoesNotPushFrame(): Unit \ Assert =
+        let projectJson =
+            "{\"program\":{\"name\":\"\",\"nodes\":{" +
+            "\"Main\":{\"name\":\"Main\",\"headers\":[],\"instructions\":[" +
+              "{\"runNode\":{\"nodeName\":\"Sub\"}}," +
+              "{\"runLine\":{\"lineID\":\"line:should-not-run\",\"substitutionCount\":0}}," +
+              "{\"return\":{}}" +
+            "]}," +
+            "\"Sub\":{\"name\":\"Sub\",\"headers\":[],\"instructions\":[" +
+              "{\"return\":{}}" +
+            "]}}," +
+            "\"initialValues\":{},\"languageVersion\":4},\"strings\":{}}";
+        let loaded = match Yarn.Loader.parseProject(projectJson) {
+            case Ok(p)  => p
+            case Err(_) => bug!("synthetic project failed")
+        };
+        let label = region rc {
+            let vm = Yarn.VM.init(rc, loaded, "Main");
+            discard Yarn.VM.step(vm); // runNode Sub
+            stepResultLabel(Yarn.VM.step(vm)) // Sub の return
+        };
+        Assert.assertEq(expected = "DialogueComplete", label)
+
+    // ========================================================================
+    // Detour は subroutine-style: 戻り先を積み、return で復帰
+    // ========================================================================
+
+    /// `<<detour Sub>>` 由来の Detour は callStack に Main を積み、Sub の return で
+    /// Main の続きが実行される。
+    /// 命令列（Main）:
+    ///   0. detourToNode "Sub"
+    ///   1. runLine "line:after-detour"   (Sub から戻ってきて到達する行)
+    ///   2. return
+    /// 命令列（Sub）:
+    ///   0. return
+    @Test
+    def testDetourReturnsToCaller(): Unit \ Assert =
+        let projectJson =
+            "{\"program\":{\"name\":\"\",\"nodes\":{" +
+            "\"Main\":{\"name\":\"Main\",\"headers\":[],\"instructions\":[" +
+              "{\"detourToNode\":{\"nodeName\":\"Sub\"}}," +
+              "{\"runLine\":{\"lineID\":\"line:after-detour\",\"substitutionCount\":0}}," +
+              "{\"return\":{}}" +
+            "]}," +
+            "\"Sub\":{\"name\":\"Sub\",\"headers\":[],\"instructions\":[" +
+              "{\"return\":{}}" +
+            "]}}," +
+            "\"initialValues\":{},\"languageVersion\":4},\"strings\":{}}";
+        let loaded = match Yarn.Loader.parseProject(projectJson) {
+            case Ok(p)  => p
+            case Err(_) => bug!("synthetic project failed")
+        };
+        let lineRef = region rc {
+            let vm = Yarn.VM.init(rc, loaded, "Main");
+            discard Yarn.VM.step(vm); // detourToNode Sub
+            discard Yarn.VM.step(vm); // Sub の return → NodeComplete、Main ip=1 へ
+            match Yarn.VM.step(vm) {  // runLine "line:after-detour"
+                case WaitingLine(id, _) => id
+                case _                  => bug!("expected WaitingLine after detour return")
+            }
+        };
+        Assert.assertEq(expected = "line:after-detour", lineRef)
+
+    // ========================================================================
+    // Stop: callStack 残留があっても即 DialogueComplete
+    // ========================================================================
+
+    /// `<<stop>>` は callStack を破棄して dialogue を即終了する。
+    /// detour 経由で Sub に居る最中に Stop しても、Main へ戻らずに DialogueComplete。
+    /// 命令列（Main）:
+    ///   0. detourToNode "Sub"
+    ///   1. runLine "line:never"   (Stop なら絶対到達しない行)
+    ///   2. return
+    /// 命令列（Sub）:
+    ///   0. stop
+    @Test
+    def testStopClearsCallStackAndCompletes(): Unit \ Assert =
+        let projectJson =
+            "{\"program\":{\"name\":\"\",\"nodes\":{" +
+            "\"Main\":{\"name\":\"Main\",\"headers\":[],\"instructions\":[" +
+              "{\"detourToNode\":{\"nodeName\":\"Sub\"}}," +
+              "{\"runLine\":{\"lineID\":\"line:never\",\"substitutionCount\":0}}," +
+              "{\"return\":{}}" +
+            "]}," +
+            "\"Sub\":{\"name\":\"Sub\",\"headers\":[],\"instructions\":[" +
+              "{\"stop\":{}}" +
+            "]}}," +
+            "\"initialValues\":{},\"languageVersion\":4},\"strings\":{}}";
+        let loaded = match Yarn.Loader.parseProject(projectJson) {
+            case Ok(p)  => p
+            case Err(_) => bug!("synthetic project failed")
+        };
+        let label = region rc {
+            let vm = Yarn.VM.init(rc, loaded, "Main");
+            discard Yarn.VM.step(vm); // detourToNode Sub
+            stepResultLabel(Yarn.VM.step(vm)) // Sub の stop → DialogueComplete
+        };
+        Assert.assertEq(expected = "DialogueComplete", label)
 }

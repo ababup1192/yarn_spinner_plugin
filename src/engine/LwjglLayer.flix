@@ -479,22 +479,14 @@ mod LwjglLayer {
     // Font Atlas Baking (STBTruetype)
     // ========================================================================
 
-    /// LogScene 等で使う日本語ロガー文用の漢字 + UI 記号。連続範囲ではなく
-    /// 個別指定でアトラスにベイクする。将来追加する場合はここに足すだけでよい。
-    def kanjiCodepoints(): List[Int32] =
-        0x6575 ::    // 敵
-        0x653B ::    // 攻
-        0x6483 ::    // 撃
-        0x5473 ::    // 味
-        0x65B9 ::    // 方
-        0x6570 ::    // 数
-        0x6B8B ::    // 残
-        0x7D42 ::    // 終
-        0x4E86 ::    // 了
-        0x958B ::    // 開
-        0x59CB ::    // 始
-        0x25BC ::    // ▼ 対話続行インジケータ
-        Nil
+    /// アトラスにベイクする漢字 + UI 記号のコードポイント列を `fonts/joyo_kanji.txt`
+    /// から読み込む。常用漢字 2,140 字 + ▼ などの UI 記号を 1 行にまとめたテキストで
+    /// 管理し、Flix コードからは外している（ハードコードを避けて編集しやすくする）。
+    /// `Char.toBmpCodePoint` は U+8000 以上で負値になるので 0xFFFF でマスクする。
+    def kanjiCodepoints(): List[Int32] \ IO =
+        let text = Files.readString(Paths.get("fonts/joyo_kanji.txt"));
+        String.toList(text)
+            |> List.map(ch -> Int32.bitwiseAnd(Char.toBmpCodePoint(ch), 0xFFFF))
 
     /// stbtt_PackFontRanges でベイクされる単一レンジの記述。
     /// `firstCp = 0` のとき `array` の個別 cp が使われる（stbtt の仕様）。
@@ -523,7 +515,10 @@ mod LwjglLayer {
         }
 
     def bakeFontAtlas(entry: GameEngine.FontEntry): (FontAtlas, GameEngine.TextureInfo) \ IO =
-        let bitmapSize  = 1024;
+        // 常用漢字 2,140 字 + ASCII + ひらがな + カタカナ + 全角 ASCII で
+        // 約 2,500 グリフ。1024x1024 だと 16px ベイクでもパディング込みで入らないため
+        // 2048x2048 に拡張。
+        let bitmapSize  = 2048;
         let bitmapSizeF = Int32.toFloat64(bitmapSize);
 
         // フォントファイルを ByteBuffer に読み込む

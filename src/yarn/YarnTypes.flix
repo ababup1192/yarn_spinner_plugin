@@ -48,10 +48,15 @@ mod Yarn.Types {
         case Pop
         /// ノード終了。callStack を持つ場合は復帰、空なら対話完了。
         case Return
+        /// 対話を強制終了。callStack を破棄して即 DialogueComplete に遷移する。
+        /// `<<stop>>` 由来。GameOver や強制ジャンプ後の終端で使う。
+        case Stop
         /// 文字列をスタックに積む。
         case PushString(String)
         /// 数値をスタックに積む。
         case PushFloat(Float64)
+        /// 真偽値をスタックに積む（`<<set $x = true>>` のリテラル代入で出る）。
+        case PushBool(Bool)
         /// 変数の値をスタックに積む。
         case PushVariable(String)
         /// スタック top を変数に書き込む（pop はしない）。
@@ -60,8 +65,12 @@ mod Yarn.Types {
         case CallFunc(String)
         /// カスタムコマンド実行。スタック上位 N 個を pop して置換に使う。
         case RunCommand(String, Int32)
-        /// 別ノードを呼び出す。callStack に戻り先を積んでから移動する。
+        /// `<<jump X>>` 由来。currentNode を置き換えるだけで callStack には積まない。
+        /// 飛び先で `Return` に達するとそのまま対話完了。
         case RunNode(String)
+        /// `<<detour X>>` 由来。callStack に戻り先を積んでから移動する。
+        /// 飛び先で `Return` に達したら呼び出し元に戻る。
+        case Detour(String)
     }
 
     /// Yarn のノード（命令列とメタデータ）。

@@ -172,4 +172,5 @@ title: GameOver
 <<wait 1.0>>
 ナレーション: GAME OVER
 <<phase Start>>
+<<stop>>
 ===

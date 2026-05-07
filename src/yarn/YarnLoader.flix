@@ -138,13 +138,16 @@ mod Yarn.Loader {
             case "peekAndJump"    => Ok(Instruction.PeekAndJump)
             case "pop"            => Ok(Instruction.Pop)
             case "return"         => Ok(Instruction.Return)
+            case "stop"           => Ok(Instruction.Stop)
             case "pushString"     => decodePushString(operands)
             case "pushFloat"      => decodePushFloat(operands)
+            case "pushBool"       => decodePushBool(operands)
             case "pushVariable"   => decodePushVariable(operands)
             case "storeVariable"  => decodeStoreVariable(operands)
             case "callFunc"       => decodeCallFunc(operands)
             case "runCommand"     => decodeRunCommand(operands)
             case "runNode"        => decodeRunNode(operands)
+            case "detourToNode"   => decodeDetourToNode(operands)
             case _                => Err(YarnLoadError.UnknownInstruction(opcode))
         }
 
@@ -198,6 +201,13 @@ mod Yarn.Loader {
             value    <- expectFloat64(valueJson, "pushFloat.value")
         ) yield Instruction.PushFloat(value)
 
+    def decodePushBool(element: Json.JsonElement): Result[YarnLoadError, Instruction] =
+        forM (
+            object   <- expectObject(element, "pushBool");
+            valueJson <- requireKey("value", object);
+            value    <- expectBool(valueJson, "pushBool.value")
+        ) yield Instruction.PushBool(value)
+
     def decodePushVariable(element: Json.JsonElement): Result[YarnLoadError, Instruction] =
         forM (
             object       <- expectObject(element, "pushVariable");
@@ -234,6 +244,15 @@ mod Yarn.Loader {
             nameJson <- requireKey("nodeName", object);
             nodeName <- expectString(nameJson, "runNode.nodeName")
         ) yield Instruction.RunNode(nodeName)
+
+    /// `<<detour Foo>>` 由来。`Instruction.Detour` にデコード（`RunNode` とは
+    /// 異なり callStack に戻りフレームを積む VM 側の実装に対応）。
+    def decodeDetourToNode(element: Json.JsonElement): Result[YarnLoadError, Instruction] =
+        forM (
+            object   <- expectObject(element, "detourToNode");
+            nameJson <- requireKey("nodeName", object);
+            nodeName <- expectString(nameJson, "detourToNode.nodeName")
+        ) yield Instruction.Detour(nodeName)
 
     /// `initialValues`: `{ "$var": { boolValue/floatValue/stringValue: ... } }`
     def decodeInitialValues(element: Json.JsonElement):

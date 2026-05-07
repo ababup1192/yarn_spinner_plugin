@@ -114,4 +114,79 @@ mod TestYarnLoader {
             case _ =>
                 bug!("expected UnknownInstruction")
         }
+
+    /// `pushBool` opcode は `Instruction.PushBool(Bool)` にロードされる。
+    /// `<<set $x = true>>` のような Bool リテラル代入で出る。
+    @Test
+    def testParsePushBool(): Unit \ Assert =
+        let json =
+            "{\"program\":{\"name\":\"\","
+              + "\"nodes\":{\"X\":{\"name\":\"X\",\"headers\":[],"
+              + "\"instructions\":[{\"pushBool\":{\"value\":true}}]}},"
+              + "\"initialValues\":{},\"languageVersion\":4},"
+              + "\"strings\":{}}";
+        match Yarn.Loader.parseProject(json) {
+            case Ok(loaded) =>
+                let node = match Map.get("X", loaded#program#nodes) {
+                    case Some(n) => n
+                    case None    => bug!("X node missing")
+                };
+                let first = match Vector.nth(0, node#instructions) {
+                    case Some(i) => i
+                    case None    => bug!("X has no instructions")
+                };
+                Assert.assertEq(expected = Instruction.PushBool(true), first)
+            case Err(_) =>
+                bug!("pushBool should parse cleanly")
+        }
+
+    /// `detourToNode` opcode は `Instruction.Detour` にロードされる
+    /// （`<<detour>>` 由来。VM 側で callStack に戻り先を積む）。
+    @Test
+    def testParseDetourToNode(): Unit \ Assert =
+        let json =
+            "{\"program\":{\"name\":\"\","
+              + "\"nodes\":{\"X\":{\"name\":\"X\",\"headers\":[],"
+              + "\"instructions\":[{\"detourToNode\":{\"nodeName\":\"BattleLoop\"}}]}},"
+              + "\"initialValues\":{},\"languageVersion\":4},"
+              + "\"strings\":{}}";
+        match Yarn.Loader.parseProject(json) {
+            case Ok(loaded) =>
+                let node = match Map.get("X", loaded#program#nodes) {
+                    case Some(n) => n
+                    case None    => bug!("X node missing")
+                };
+                let first = match Vector.nth(0, node#instructions) {
+                    case Some(i) => i
+                    case None    => bug!("X has no instructions")
+                };
+                Assert.assertEq(expected = Instruction.Detour("BattleLoop"), first)
+            case Err(_) =>
+                bug!("detourToNode should parse cleanly")
+        }
+
+    /// `stop` opcode は `Instruction.Stop` にロードされる。`<<stop>>` 由来で
+    /// VM 側では callStack を破棄して即 DialogueComplete に遷移する。
+    @Test
+    def testParseStop(): Unit \ Assert =
+        let json =
+            "{\"program\":{\"name\":\"\","
+              + "\"nodes\":{\"X\":{\"name\":\"X\",\"headers\":[],"
+              + "\"instructions\":[{\"stop\":{}}]}},"
+              + "\"initialValues\":{},\"languageVersion\":4},"
+              + "\"strings\":{}}";
+        match Yarn.Loader.parseProject(json) {
+            case Ok(loaded) =>
+                let node = match Map.get("X", loaded#program#nodes) {
+                    case Some(n) => n
+                    case None    => bug!("X node missing")
+                };
+                let first = match Vector.nth(0, node#instructions) {
+                    case Some(i) => i
+                    case None    => bug!("X has no instructions")
+                };
+                Assert.assertEq(expected = Instruction.Stop, first)
+            case Err(_) =>
+                bug!("stop should parse cleanly")
+        }
 }

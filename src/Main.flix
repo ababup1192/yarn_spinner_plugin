@@ -23,8 +23,7 @@ def main(): Unit \ {IO, Chan, NonDet} =
             maxDeltaTime    = 0.05
         };
         run {
-            // ゆうしゃの HP は外から注入（fixture デフォルトの 0 を上書き）。
-            Game.start(15)
+            Game.start()
         } with LwjglLayer.withLwjgl(config)
           with Fs.FileRead.runWithIO
           with Fs.FileWrite.runWithIO
