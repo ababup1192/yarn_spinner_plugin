@@ -2,7 +2,7 @@
 ///
 /// region rc に閉じた可変領域に住む。step を呼ぶたびに 1 命令進み、結果を `StepResult` で返す。
 /// 行・選択肢・コマンドの待機が発生したら waitingState に印を立て、それぞれ
-/// `advance` / `selectOption` / `commandComplete` で解除されるまで step は同じ
+/// `next` / `selectOption` / `commandComplete` で解除されるまで step は同じ
 /// `StepResult` を返し続ける（同じ命令を二重実行しない）。
 ///
 /// エンジン依存なし。
@@ -18,7 +18,7 @@ mod Yarn.VM {
     /// step が外部入力待ちで停止しているときの内部マーカー。
     /// `OptionEntry` を含むためレコード由来の Eq が無く、自動派生は付けていない。
     enum WaitingState {
-        case ForLineAdvance(LineRef, List[String])
+        case ForLineNext(LineRef, List[String])
         case ForOptionSelect(List[OptionEntry])
         case ForCommandDone(String)
     }
@@ -71,9 +71,9 @@ mod Yarn.VM {
         }
 
     /// 行表示の完了を通知する（次の step から再開する）。
-    pub def advance(vm: VM[r]): Unit \ r =
+    pub def next(vm: VM[r]): Unit \ r =
         match Ref.get(vm#waitingState) {
-            case Some(WaitingState.ForLineAdvance(_, _)) => Ref.put(None, vm#waitingState)
+            case Some(WaitingState.ForLineNext(_, _)) => Ref.put(None, vm#waitingState)
             case _                                       => ()
         }
 
@@ -107,7 +107,7 @@ mod Yarn.VM {
     // ════════════════════════════════════════════════════════════════════════
 
     def stateToResult(state: WaitingState): StepResult = match state {
-        case WaitingState.ForLineAdvance(lineRef, substitutions) =>
+        case WaitingState.ForLineNext(lineRef, substitutions) =>
             StepResult.WaitingLine(lineRef, substitutions)
         case WaitingState.ForOptionSelect(options) =>
             StepResult.WaitingOptions(options)
@@ -139,7 +139,7 @@ mod Yarn.VM {
         match instruction {
             case RunLine(lineRef, substitutionCount) =>
                 let substitutions = popSubstitutions(substitutionCount, vm);
-                Ref.put(Some(WaitingState.ForLineAdvance(lineRef, substitutions)),
+                Ref.put(Some(WaitingState.ForLineNext(lineRef, substitutions)),
                         vm#waitingState);
                 StepResult.WaitingLine(lineRef, substitutions)
 

@@ -15,7 +15,7 @@ mod Dialogue.Runner {
     use Yarn.VM.{StepResult}
     use Yarn.VM.StepResult.{Running, WaitingLine, WaitingOptions, WaitingCommand,
                              NodeComplete, DialogueComplete, Failed}
-    use Dialogue.{PresentedLine, PresentedOption}
+    use Dialogue.{PresentedLine, PresentedChoice}
 
     /// 1 命令分の暴走防止に十分な大きい数。
     /// `runUntilWaiting` が同じ submit で 1000 命令以上回ったらバグとみなして打ち切る。
@@ -46,20 +46,20 @@ mod Dialogue.Runner {
             def isActive(resume) =
                 resume(Option.nonEmpty(Ref.get(vmRef)))
 
-            def submitAdvance(resume) =
+            def submitNext(resume) =
                 match Ref.get(vmRef) {
                     case Some(vm) => {
-                        Yarn.VM.advance(vm);
+                        Yarn.VM.next(vm);
                         runUntilWaiting(vm, compiledProject, maxStepsPerSubmit());
                         resume()
                     }
                     case None => resume()
                 }
 
-            def submitSelect(optionIndex, resume) =
+            def submitSelect(choiceIndex, resume) =
                 match Ref.get(vmRef) {
                     case Some(vm) => {
-                        Yarn.VM.selectOption(optionIndex, vm);
+                        Yarn.VM.selectOption(choiceIndex, vm);
                         runUntilWaiting(vm, compiledProject, maxStepsPerSubmit());
                         resume()
                     }
@@ -92,8 +92,8 @@ mod Dialogue.Runner {
                     let line = resolveLine(lineId, substitutions, compiledProject);
                     Dialogue.DialogueView.presentLine(line)
                 case WaitingOptions(entries) =>
-                    let presented = entriesToPresented(entries, compiledProject);
-                    Dialogue.DialogueView.presentOptions(presented)
+                    let choices = entriesToChoices(entries, compiledProject);
+                    Dialogue.DialogueView.presentChoices(choices)
                 case WaitingCommand(commandText) => {
                     Dialogue.DialogueView.runCommand(commandText);
                     let synchronous = Dialogue.CommandRegistry.dispatch(commandText);
@@ -109,21 +109,21 @@ mod Dialogue.Runner {
                     Dialogue.DialogueView.dialogueComplete()
             }
 
-    /// `Yarn.VM` の OptionEntry から view 用の PresentedOption に整形する。
+    /// `Yarn.VM` の OptionEntry から view 用の PresentedChoice に整形する。
     /// 表示テキストは StringTable で行 ID を引いて置換解決する。
-    def entriesToPresented(entries: List[Yarn.Types.OptionEntry], compiledProject: YarnProject):
-                            List[PresentedOption] =
-        let toPresented = pair -> {
+    def entriesToChoices(entries: List[Yarn.Types.OptionEntry], compiledProject: YarnProject):
+                            List[PresentedChoice] =
+        let toChoice = pair -> {
             let (index, entry) = pair;
             let text = match Yarn.StringTable.resolve(
                             entry#lineId, entry#substitutions, compiledProject#strings) {
                 case Ok(resolved) => resolved
                 case Err(_)       => entry#lineId
             };
-            ({ index = index, text = text, available = entry#available }: PresentedOption)
+            ({ index = index, text = text, available = entry#available }: PresentedChoice)
         };
         let indexed = List.zip(List.range(0, List.length(entries)), entries);
-        List.map(toPresented, indexed)
+        List.map(toChoice, indexed)
 
     /// 行 ID と置換から view 用の PresentedLine に整形する。
     /// 話者は `Dialogue.extractSpeaker`（半角コロン区切り）で抽出する。

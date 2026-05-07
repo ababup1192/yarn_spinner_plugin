@@ -245,17 +245,22 @@ mod SceneLoader {
     def buildCanvasLayer(tagParser: Option[String] -> Result[Json.JsonError, t],
                          map: Map[String, Json.JsonElement]): Result[Json.JsonError, EngineNode[t]] =
         forM (
-            tag       <- parseTagField(tagParser, map);
-            drawLayer <- (Json.FromJson.getAtKey(Root, "layer", map): Result[Json.JsonError, Int32]);
-            posOpt    <- parseVec2Opt("pos", map)
+            tag         <- parseTagField(tagParser, map);
+            drawLayer   <- (Json.FromJson.getAtKey(Root, "layer", map): Result[Json.JsonError, Int32]);
+            posOpt      <- parseVec2Opt("pos", map);
+            rotationOpt <- (Json.FromJson.getAtKeyOpt(Root, "rotation", map): Result[Json.JsonError, Option[Float64]])
         ) yield {
             let layer = CanvasLayer.make(drawLayer)
-                |> applyOpt(posOpt, setCanvasLayerPosition);
+                |> applyOpt(posOpt, setCanvasLayerPosition)
+                |> applyOpt(rotationOpt, setCanvasLayerRotation);
             EngineNode.CanvasLayerWithState(layer, tag)
         }
 
     def setCanvasLayerPosition(pos: Vec2.Vec2, layer: CanvasLayer): CanvasLayer =
         Node2D.setPosition(pos, layer)
+
+    def setCanvasLayerRotation(rot: Float64, layer: CanvasLayer): CanvasLayer =
+        Node2D.setRotation(rot, layer)
 
     def buildSprite2D(tagParser: Option[String] -> Result[Json.JsonError, t],
                       map: Map[String, Json.JsonElement]): Result[Json.JsonError, EngineNode[t]] =
@@ -634,25 +639,27 @@ mod SceneLoader {
             case None => Err(JsonError(Root, Set#{"FontAtlas (loadSceneWithFont required for Label2D)"}))
             case Some(font) =>
                 forM (
-                    tag        <- parseTagField(tagParser, map);
-                    text       <- (Json.FromJson.getAtKey(Root, "text", map): Result[Json.JsonError, String]);
-                    pos        <- parseVec2("pos", map);
-                    fontSize   <- (Json.FromJson.getAtKey(Root, "fontSize", map): Result[Json.JsonError, Float64]);
-                    hAlignOpt  <- (Json.FromJson.getAtKeyOpt(Root, "horizontalAlignment", map):
+                    tag         <- parseTagField(tagParser, map);
+                    text        <- (Json.FromJson.getAtKey(Root, "text", map): Result[Json.JsonError, String]);
+                    pos         <- parseVec2("pos", map);
+                    fontSize    <- (Json.FromJson.getAtKey(Root, "fontSize", map): Result[Json.JsonError, Float64]);
+                    hAlignOpt   <- (Json.FromJson.getAtKeyOpt(Root, "horizontalAlignment", map):
                                      Result[Json.JsonError, Option[String]]);
-                    vAlignOpt  <- (Json.FromJson.getAtKeyOpt(Root, "verticalAlignment", map):
+                    vAlignOpt   <- (Json.FromJson.getAtKeyOpt(Root, "verticalAlignment", map):
                                      Result[Json.JsonError, Option[String]]);
-                    hAlign     <- parseHorizontalAlignment(hAlignOpt);
-                    vAlign     <- parseVerticalAlignment(vAlignOpt);
-                    visibleOpt <- (Json.FromJson.getAtKeyOpt(Root, "visible", map): Result[Json.JsonError, Option[Bool]]);
-                    zIndexOpt  <- (Json.FromJson.getAtKeyOpt(Root, "zIndex", map): Result[Json.JsonError, Option[Int32]])
+                    hAlign      <- parseHorizontalAlignment(hAlignOpt);
+                    vAlign      <- parseVerticalAlignment(vAlignOpt);
+                    visibleOpt  <- (Json.FromJson.getAtKeyOpt(Root, "visible", map): Result[Json.JsonError, Option[Bool]]);
+                    zIndexOpt   <- (Json.FromJson.getAtKeyOpt(Root, "zIndex", map): Result[Json.JsonError, Option[Int32]]);
+                    rotationOpt <- (Json.FromJson.getAtKeyOpt(Root, "rotation", map): Result[Json.JsonError, Option[Float64]])
                 ) yield {
                     let label = Label2D.make(text, font, fontSize)
                         |> Node2D.setPosition(pos)
                         |> Label2D.setHorizontalAlignment(hAlign)
                         |> Label2D.setVerticalAlignment(vAlign)
                         |> applyLabelVisible(visibleOpt)
-                        |> applyLabelZIndex(zIndexOpt);
+                        |> applyLabelZIndex(zIndexOpt)
+                        |> applyOpt(rotationOpt, (r, l) -> Node2D.setRotation(r, l));
                     EngineNode.Label2DWithState(label, tag)
                 }
         }
@@ -699,19 +706,21 @@ mod SceneLoader {
     def buildColorRect(tagParser: Option[String] -> Result[Json.JsonError, t],
                        map: Map[String, Json.JsonElement]): Result[Json.JsonError, EngineNode[t]] =
         forM (
-            tag        <- parseTagField(tagParser, map);
-            pos        <- parseVec2("pos", map);
-            size       <- parseVec2("size", map);
-            color      <- parseColor("color", map);
-            alphaOpt   <- (Json.FromJson.getAtKeyOpt(Root, "alpha", map): Result[Json.JsonError, Option[Float64]]);
-            visibleOpt <- (Json.FromJson.getAtKeyOpt(Root, "visible", map): Result[Json.JsonError, Option[Bool]]);
-            zIndexOpt  <- (Json.FromJson.getAtKeyOpt(Root, "zIndex", map): Result[Json.JsonError, Option[Int32]])
+            tag         <- parseTagField(tagParser, map);
+            pos         <- parseVec2("pos", map);
+            size        <- parseVec2("size", map);
+            color       <- parseColor("color", map);
+            alphaOpt    <- (Json.FromJson.getAtKeyOpt(Root, "alpha", map): Result[Json.JsonError, Option[Float64]]);
+            visibleOpt  <- (Json.FromJson.getAtKeyOpt(Root, "visible", map): Result[Json.JsonError, Option[Bool]]);
+            zIndexOpt   <- (Json.FromJson.getAtKeyOpt(Root, "zIndex", map): Result[Json.JsonError, Option[Int32]]);
+            rotationOpt <- (Json.FromJson.getAtKeyOpt(Root, "rotation", map): Result[Json.JsonError, Option[Float64]])
         ) yield {
             let rect = ColorRect.make(size, color)
                 |> Node2D.setPosition(pos)
                 |> applyOpt(alphaOpt, setColorRectAlpha)
                 |> applyOpt(visibleOpt, setColorRectVisible)
-                |> applyOpt(zIndexOpt, setColorRectZIndex);
+                |> applyOpt(zIndexOpt, setColorRectZIndex)
+                |> applyOpt(rotationOpt, (r, c) -> Node2D.setRotation(r, c));
             EngineNode.ColorRectWithState(rect, tag)
         }
 

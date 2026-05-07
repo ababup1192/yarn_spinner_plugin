@@ -27,13 +27,25 @@ mod Editor {
     }
 
     /// リサイズハンドルドラッグ中に保持する、対象ノードのドラッグ開始時スナップショット。
+    /// `nodeSnapshot`: 対象ノード（CanvasLayer の場合は CanvasLayer 自身）の開始状態。
+    /// `childSnapshots`: CanvasLayer の cascade 用に直接の子の開始状態を全て保存。
+    ///                   非 CanvasLayer のときは Nil。undo ですべて巻き戻すため
     pub type alias ResizeOrigin = {
         handle = ResizeHandle.Handle,
         boxTopLeftScreen = Vec2.Vec2,
         boxSize = Vec2.Vec2,
-        scale = Vec2.Vec2,
-        worldPos = Vec2.Vec2,
-        topLeftOffset = Vec2.Vec2
+        topLeftOffset = Vec2.Vec2,
+        nodeSnapshot = EditableNode.NodeResizeSnapshot,
+        childSnapshots = List[EditableNode.NodeResizeSnapshot]
+    }
+
+    /// 回転ハンドルドラッグ中に保持する開始時スナップショット。
+    pub type alias RotateOrigin = {
+        centerScreen = Vec2.Vec2,
+        startMouseAngle = Float64,
+        startRotation = Float64,
+        nodePath = NodePath,
+        jsonPath = String
     }
 
     /// エディタ状態の record 表現
@@ -43,6 +55,7 @@ mod Editor {
         dragOrigin = Option[Vec2.Vec2],
         nodeOrigin = Option[Vec2.Vec2],
         resizeOrigin = Option[ResizeOrigin],
+        rotateOrigin = Option[RotateOrigin],
         prevF1 = Bool,
         prevMouseLeft = Bool,
         prevArrowKeys = KeyboardNudge.ArrowKeys,
@@ -57,6 +70,7 @@ mod Editor {
         dragOrigin = None,
         nodeOrigin = None,
         resizeOrigin = None,
+        rotateOrigin = None,
         prevF1 = false,
         prevMouseLeft = false,
         prevArrowKeys = KeyboardNudge.initialPrev(),
@@ -120,7 +134,7 @@ mod Editor {
             {on = true, prevF1 = f1 | stateData}
         else
             {on = false, selected = None, dragOrigin = None, nodeOrigin = None,
-             resizeOrigin = None, prevF1 = f1 | stateData};
+             resizeOrigin = None, rotateOrigin = None, prevF1 = f1 | stateData};
         if (not toggledOn) {
             GameEngine.Game.setCursor(GameEngine.Cursor.Default);
             EditorState.put({prevMouseLeft = mouseLeft,
@@ -153,7 +167,10 @@ mod Editor {
                      scene: Scene[NodeTag]): Unit \ {GameEngine.Game} =
         let cursor = match stateData#resizeOrigin {
             case Some(origin) => cursorForHandle(origin#handle)
-            case None         => hoverCursor(mousePos, transform, stateData, scene)
+            case None         => match stateData#rotateOrigin {
+                case Some(_) => GameEngine.Cursor.AllResize
+                case None    => hoverCursor(mousePos, transform, stateData, scene)
+            }
         };
         GameEngine.Game.setCursor(cursor)
 
@@ -181,20 +198,21 @@ mod Editor {
         }
 
     /// ハンドル方向に対応するカーソル形状を返す。
+    /// 4 隅は GLFW 3.4 の対角リサイズカーソル（↘↖ / ↗↙）を使う
     def cursorForHandle(handle: ResizeHandle.Handle): GameEngine.Cursor =
         match handle {
             case ResizeHandle.Handle.Top         => GameEngine.Cursor.VResize
             case ResizeHandle.Handle.Bottom      => GameEngine.Cursor.VResize
             case ResizeHandle.Handle.Left        => GameEngine.Cursor.HResize
             case ResizeHandle.Handle.Right       => GameEngine.Cursor.HResize
-            case ResizeHandle.Handle.TopLeft     => GameEngine.Cursor.AllResize
-            case ResizeHandle.Handle.TopRight    => GameEngine.Cursor.AllResize
-            case ResizeHandle.Handle.BottomLeft  => GameEngine.Cursor.AllResize
-            case ResizeHandle.Handle.BottomRight => GameEngine.Cursor.AllResize
+            case ResizeHandle.Handle.TopLeft     => GameEngine.Cursor.NWSEResize
+            case ResizeHandle.Handle.BottomRight => GameEngine.Cursor.NWSEResize
+            case ResizeHandle.Handle.TopRight    => GameEngine.Cursor.NESWResize
+            case ResizeHandle.Handle.BottomLeft  => GameEngine.Cursor.NESWResize
         }
 
-    /// Rewind から 1 件取り出してノードを記録された状態（位置 / スケール）に戻し、
-    /// JSON にも書き戻す。履歴に何もなければ scene 不変
+    /// Rewind から 1 件取り出してノードを記録された状態（位置 / スケール / サイズ / 回転）に
+    /// 戻し、JSON にも書き戻す。履歴に何もなければ scene 不変
     def applyUndo(scene: Scene[NodeTag]):
             Scene[NodeTag] \ {EditHistory.Rewind, Fs.FileRead, Fs.FileWrite} =
         match EditHistory.Rewind.rewind() {
@@ -209,6 +227,7 @@ mod Editor {
                 SceneSerializer.updatePos(entry#jsonPath, entry#nodePath, localPos);
                 restored
             case Some(EditHistory.Entry.ScaleEntry(entry)) =>
+                // 後方互換: 旧 scale ベースの編集（現在は実質使われていない）
                 let scaled = Scene.mapEngineNode(entry#nodePath,
                     Node2D.setScale(entry#prevScale), scene);
                 let restored = Scene.setGlobalPositionAt(
@@ -219,6 +238,24 @@ mod Editor {
                 };
                 SceneSerializer.updatePosAndScale(entry#jsonPath, entry#nodePath,
                                                    localPos, entry#prevScale);
+                restored
+            case Some(EditHistory.Entry.ResizeEntry(entry)) =>
+                // 各 snapshot のノードを開始時状態に戻し、まとめて 1 ファイル書込で永続化
+                let restoredScene = List.foldLeft((acc, snap) ->
+                    Scene.mapEngineNode(snap#nodePath,
+                        n -> EditableNode.restoreFromSnapshot(snap, n), acc),
+                    scene, entry#snapshots);
+                let nodeUpdates = List.map(snap -> ({
+                    nodePath = snap#nodePath,
+                    updates = EditableNode.snapshotToFieldUpdates(snap)
+                }: SceneSerializer.NodeUpdate), entry#snapshots);
+                SceneSerializer.updateMany(entry#jsonPath, nodeUpdates);
+                restoredScene
+            case Some(EditHistory.Entry.RotateEntry(entry)) =>
+                let restored = Scene.mapEngineNode(entry#nodePath,
+                    Node2D.setRotation(entry#prevRotation), scene);
+                SceneSerializer.updateRotation(entry#jsonPath, entry#nodePath,
+                                                entry#prevRotation);
                 restored
         }
 

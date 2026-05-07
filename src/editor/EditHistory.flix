@@ -6,15 +6,24 @@
 
 mod EditHistory {
 
-    /// 1 編集の巻き戻し情報。位置だけが変わったか、スケール（と位置）が変わったかで分岐する
+    /// 1 編集の巻き戻し情報。位置 / スケール / リサイズ / 回転 で分岐する
     pub enum Entry {
         /// 位置のみ変更されたときの巻き戻し情報
         case MoveEntry({jsonPath = String, nodePath = NodePath,
                         prevWorldPos = Vec2.Vec2})
-        /// スケール（と付随する位置）変更の巻き戻し情報。
-        /// リサイズではアンカーを保つため位置も同時に動くので、両方を記録する
+        /// 旧 ScaleEntry（Sprite2D 等の `scale` フィールド単独編集用、後方互換）
         case ScaleEntry({jsonPath = String, nodePath = NodePath,
                          prevWorldPos = Vec2.Vec2, prevScale = Vec2.Vec2})
+        /// リサイズの巻き戻し情報。
+        /// ノード型ごとに更新する field が異なるため、複数ノード分の
+        /// snapshot を持てるようにしてある（CanvasLayer の cascade で複数子を
+        /// 一度に巻き戻すケースに対応）。
+        /// snapshots は EditableNode.NodeResizeSnapshot のリスト
+        case ResizeEntry({jsonPath = String,
+                          snapshots = List[EditableNode.NodeResizeSnapshot]})
+        /// 回転の巻き戻し情報（radians）
+        case RotateEntry({jsonPath = String, nodePath = NodePath,
+                          prevRotation = Float64})
     }
 
     /// 編集履歴 stack を扱うエフェクト。

@@ -46,7 +46,7 @@ mod TestYarnScenario {
                 case Running        => loop(vm, choices, remaining - 1, acc)
                 case NodeComplete   => loop(vm, choices, remaining - 1, acc)
                 case WaitingLine(lineRef, substitutions) =>
-                    Yarn.VM.advance(vm);
+                    Yarn.VM.next(vm);
                     loop(vm, choices, remaining - 1,
                          ScenarioEvent.Line(lineRef, substitutions) :: acc)
                 case WaitingOptions(options) =>

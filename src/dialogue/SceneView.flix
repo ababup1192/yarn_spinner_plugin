@@ -14,7 +14,7 @@
 /// 呼び出し側に queue を露出しない。
 mod Dialogue.SceneView {
     use Dialogue.ViewEvent
-    use Dialogue.ViewEvent.{Line, Options, Dismiss, Command, Complete}
+    use Dialogue.ViewEvent.{Line, Choices, Dismiss, Command, Complete}
 
     /// SceneView が貯めた `ViewEvent` を取り出す effect。
     /// `process` の中で呼ばれ、handler 側が region 内 `MutDeque` を List に変換して返す。
@@ -33,9 +33,9 @@ mod Dialogue.SceneView {
                 MutDeque.pushBack(Line(line#text, line#speaker), queue);
                 resume()
             }
-            def presentOptions(options, resume) = {
-                let texts = List.map(option -> option#text, options);
-                MutDeque.pushBack(Options(texts), queue);
+            def presentChoices(choices, resume) = {
+                let labels = List.map(choice -> choice#text, choices);
+                MutDeque.pushBack(Choices(labels), queue);
                 resume()
             }
             def dismissLine(resume) = {

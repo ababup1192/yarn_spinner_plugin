@@ -51,7 +51,7 @@ mod Overlay {
                 }
         }
 
-    /// 選択枠の 8 ハンドルを最前面に置く
+    /// 選択枠の 8 ハンドル + 上部の回転ノブを最前面に置く
     pub def addResizeHandles(box: {topLeft = Vec2.Vec2, size = Vec2.Vec2},
                               scene: Scene[NodeTag]): Scene[NodeTag] =
         let layerName = handleLayerName();
@@ -59,7 +59,7 @@ mod Overlay {
         let color = selectionStyle()#color;
         let withLayer = Scene.addNode(layerName,
             EngineNode.CanvasLayerWithState(layer, NodeTag.NoTag), scene);
-        ResizeHandle.overlayRects(box)
+        let withResize = ResizeHandle.overlayRects(box)
             |> List.foldLeft((acc, indexed) -> {
                 let (handle, rect) = indexed;
                 let handleTag = "${handle}";
@@ -67,7 +67,32 @@ mod Overlay {
                     |> Node2D.setPosition(rect#position);
                 Scene.addChildAt(layerName :: Nil, handleTag,
                     EngineNode.ColorRectWithState(fill, NodeTag.NoTag), acc)
-            }, withLayer)
+            }, withLayer);
+        addRotateKnob(layerName, box, color, withResize)
+
+    /// 上辺中央から rotateKnobOffset 上にノブを配置し、選択枠との間にリンク線を引く
+    def addRotateKnob(layerName: String,
+                      box: {topLeft = Vec2.Vec2, size = Vec2.Vec2},
+                      color: {r = Float32, g = Float32, b = Float32},
+                      scene: Scene[NodeTag]): Scene[NodeTag] =
+        let knobCenter = ResizeHandle.rotateKnobCenter(box);
+        let knobSize = ResizeHandle.handleSize();
+        let knob = ColorRect.make({x = knobSize, y = knobSize}, color)
+            |> Node2D.setPosition({x = knobCenter#x - knobSize / 2.0,
+                                    y = knobCenter#y - knobSize / 2.0});
+        // ノブから選択枠上辺中央までの細い縦線（基準線）
+        let lineThickness = 1.0;
+        let topMidX = box#topLeft#x + box#size#x / 2.0;
+        let lineTop = knobCenter#y + knobSize / 2.0;
+        let lineBottom = box#topLeft#y;
+        let line = ColorRect.make(
+            {x = lineThickness, y = lineBottom - lineTop}, color)
+            |> Node2D.setPosition({x = topMidX - lineThickness / 2.0, y = lineTop});
+        scene
+            |> Scene.addChildAt(layerName :: Nil, "_rotate_link",
+                EngineNode.ColorRectWithState(line, NodeTag.NoTag))
+            |> Scene.addChildAt(layerName :: Nil, "_rotate_knob",
+                EngineNode.ColorRectWithState(knob, NodeTag.NoTag))
 
     /// ハンドル群を載せる CanvasLayer のノード名
     def handleLayerName(): String = "_editor_handle_layer"

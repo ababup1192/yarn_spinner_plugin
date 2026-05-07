@@ -17,7 +17,7 @@ pub enum NodeTag {
 }
 
 /// Node 実装。Dialogue レイヤの `process` を `DialogueScene.process` に委譲する。
-/// `process` 内で auto-advance が `Session.submitAdvance` を、新行検知が
+/// `process` 内で auto-next が `Session.submitNext` を、新行検知が
 /// `GameEngine.Audio.playAudio` を発火するため Aef は 3 つ必要。
 instance Node[NodeTag] {
     type Aef = { Dialogue.SceneView.Inbox, Dialogue.Session, GameEngine.Audio }

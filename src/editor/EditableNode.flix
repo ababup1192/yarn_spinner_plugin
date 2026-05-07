@@ -103,6 +103,196 @@ mod EditableNode {
             case _                                     => false
         }
 
+    /// snapshot に保存された開始時の値 × ratio で、新しい EngineNode を返す。
+    /// 必ず snapshot の prev 値を起点にするので、毎フレーム呼び出されても
+    /// 結果は累乗されず常に「原始 × 現フレームの ratio」になる。
+    /// snapshot と engineNode の型が一致しない場合は engineNode を変更しない。
+    pub def applyResizeFromSnapshot(snapshot: NodeResizeSnapshot, ratio: Vec2.Vec2):
+            EngineNode[NodeTag] -> EngineNode[NodeTag] = engineNode ->
+        match engineNode {
+            case EngineNode.ColorRectWithState(rect, st) =>
+                match snapshot#prevSize {
+                    case Some(prev) =>
+                        let newSize = {x = prev#x * ratio#x, y = prev#y * ratio#y};
+                        EngineNode.ColorRectWithState(ColorRect.setSize(newSize, rect), st)
+                    case None => engineNode
+                }
+            case EngineNode.Label2DWithState(label, st) =>
+                match snapshot#prevFontSize {
+                    case Some(prev) =>
+                        let r = Float64.min(ratio#x, ratio#y);
+                        EngineNode.Label2DWithState(
+                            Label2D.setFontSize(prev * r, label), st)
+                    case None => engineNode
+                }
+            case EngineNode.Sprite2DWithState(sprite, st) =>
+                match snapshot#prevScale {
+                    case Some(prev) =>
+                        let newScale = {x = prev#x * ratio#x, y = prev#y * ratio#y};
+                        EngineNode.Sprite2DWithState(
+                            Node2D.setScale(newScale, sprite), st)
+                    case None => engineNode
+                }
+            case EngineNode.AnimSprite2DWithState(sprite, st) =>
+                match snapshot#prevScale {
+                    case Some(prev) =>
+                        let newScale = {x = prev#x * ratio#x, y = prev#y * ratio#y};
+                        EngineNode.AnimSprite2DWithState(
+                            Node2D.setScale(newScale, sprite), st)
+                    case None => engineNode
+                }
+            case EngineNode.TextureButtonWithState(btn, st) =>
+                match snapshot#prevSize {
+                    case Some(prev) =>
+                        let newSize = {x = prev#x * ratio#x, y = prev#y * ratio#y};
+                        EngineNode.TextureButtonWithState(
+                            TextureButton.setSize(newSize, btn), st)
+                    case None => engineNode
+                }
+            case _ => engineNode
+        }
+
+    /// ノード型に応じて JSON 書き戻しに必要な FieldUpdate のリストを返す。
+    /// リサイズドロップ時に `applyResize` で更新したノードを永続化するためのヘルパ。
+    /// `oldNode`: ドラッグ開始時のノード状態（差分検出用）
+    /// `newNode`: 現在のシーンに居るノード（リサイズ後の状態）
+    /// 位置は別 key（"pos"）で別途記録するためここには含まない
+    pub def resizeFieldUpdates(engineNode: EngineNode[NodeTag]):
+            List[SceneSerializer.FieldUpdate] =
+        match engineNode {
+            case EngineNode.ColorRectWithState(rect, _) =>
+                {key = "size",
+                 value = SceneSerializer.FieldValue.VecValue(ColorRect.getSize(rect))} :: Nil
+            case EngineNode.Label2DWithState(label, _) =>
+                {key = "fontSize",
+                 value = SceneSerializer.FieldValue.ScalarValue(Label2D.getFontSize(label))} :: Nil
+            case EngineNode.Sprite2DWithState(sprite, _) =>
+                {key = "scale",
+                 value = SceneSerializer.FieldValue.VecValue(Node2D.getScale(sprite))} :: Nil
+            case EngineNode.AnimSprite2DWithState(sprite, _) =>
+                {key = "scale",
+                 value = SceneSerializer.FieldValue.VecValue(Node2D.getScale(sprite))} :: Nil
+            case EngineNode.TextureButtonWithState(btn, _) =>
+                {key = "size",
+                 value = SceneSerializer.FieldValue.VecValue(TextureButton.getSize(btn))} :: Nil
+            case _ => Nil
+        }
+
+    /// リサイズ巻き戻しに必要な「元の値」を 1 ノード分まとめて記録する。
+    /// undo 用の EditHistory.ResizeEntry に詰める前に呼ぶ
+    pub type alias NodeResizeSnapshot = {
+        nodePath = NodePath,
+        prevPosition = Vec2.Vec2,
+        prevSize = Option[Vec2.Vec2],          // ColorRect / TextureButton 用
+        prevFontSize = Option[Float64],         // Label2D 用
+        prevScale = Option[Vec2.Vec2]           // Sprite2D / AnimatedSprite2D 用
+    }
+
+    /// ノードの現在状態を NodeResizeSnapshot にスナップショットする
+    pub def snapshotForResize(nodePath: NodePath,
+                              engineNode: EngineNode[NodeTag]): NodeResizeSnapshot =
+        let prevPos = Node2D.getPosition(engineNode);
+        match engineNode {
+            case EngineNode.ColorRectWithState(rect, _) => {
+                nodePath = nodePath, prevPosition = prevPos,
+                prevSize = Some(ColorRect.getSize(rect)),
+                prevFontSize = None, prevScale = None
+            }
+            case EngineNode.Label2DWithState(label, _) => {
+                nodePath = nodePath, prevPosition = prevPos,
+                prevSize = None,
+                prevFontSize = Some(Label2D.getFontSize(label)), prevScale = None
+            }
+            case EngineNode.Sprite2DWithState(sprite, _) => {
+                nodePath = nodePath, prevPosition = prevPos,
+                prevSize = None, prevFontSize = None,
+                prevScale = Some(Node2D.getScale(sprite))
+            }
+            case EngineNode.AnimSprite2DWithState(sprite, _) => {
+                nodePath = nodePath, prevPosition = prevPos,
+                prevSize = None, prevFontSize = None,
+                prevScale = Some(Node2D.getScale(sprite))
+            }
+            case EngineNode.TextureButtonWithState(btn, _) => {
+                nodePath = nodePath, prevPosition = prevPos,
+                prevSize = Some(TextureButton.getSize(btn)),
+                prevFontSize = None, prevScale = None
+            }
+            case _ => {
+                nodePath = nodePath, prevPosition = prevPos,
+                prevSize = None, prevFontSize = None, prevScale = None
+            }
+        }
+
+    /// スナップショットから EngineNode を元の状態に戻す（undo 用）
+    pub def restoreFromSnapshot(snapshot: NodeResizeSnapshot,
+                                 engineNode: EngineNode[NodeTag]):
+            EngineNode[NodeTag] =
+        let withPos = Node2D.setPosition(snapshot#prevPosition, engineNode);
+        match engineNode {
+            case EngineNode.ColorRectWithState(rect, st) =>
+                match snapshot#prevSize {
+                    case Some(sz) =>
+                        EngineNode.ColorRectWithState(
+                            ColorRect.setSize(sz, rect)
+                                |> Node2D.setPosition(snapshot#prevPosition), st)
+                    case None => withPos
+                }
+            case EngineNode.Label2DWithState(label, st) =>
+                match snapshot#prevFontSize {
+                    case Some(fs) =>
+                        EngineNode.Label2DWithState(
+                            Label2D.setFontSize(fs, label)
+                                |> Node2D.setPosition(snapshot#prevPosition), st)
+                    case None => withPos
+                }
+            case EngineNode.Sprite2DWithState(_, _) =>
+                match snapshot#prevScale {
+                    case Some(sc) => Node2D.setScale(sc, withPos)
+                    case None => withPos
+                }
+            case EngineNode.AnimSprite2DWithState(_, _) =>
+                match snapshot#prevScale {
+                    case Some(sc) => Node2D.setScale(sc, withPos)
+                    case None => withPos
+                }
+            case EngineNode.TextureButtonWithState(btn, st) =>
+                match snapshot#prevSize {
+                    case Some(sz) =>
+                        EngineNode.TextureButtonWithState(
+                            TextureButton.setSize(sz, btn)
+                                |> Node2D.setPosition(snapshot#prevPosition), st)
+                    case None => withPos
+                }
+            case _ => withPos
+        }
+
+    /// スナップショットから JSON 書戻用の FieldUpdate を組み立てる（undo 用）
+    pub def snapshotToFieldUpdates(snapshot: NodeResizeSnapshot):
+            List[SceneSerializer.FieldUpdate] =
+        let posUpd: SceneSerializer.FieldUpdate =
+            {key = "pos",
+             value = SceneSerializer.FieldValue.VecValue(snapshot#prevPosition)};
+        let sizeUpds = match snapshot#prevSize {
+            case Some(sz) => ({key = "size",
+                value = SceneSerializer.FieldValue.VecValue(sz)}
+                : SceneSerializer.FieldUpdate) :: Nil
+            case None     => Nil
+        };
+        let fontSizeUpds = match snapshot#prevFontSize {
+            case Some(fs) => ({key = "fontSize",
+                value = SceneSerializer.FieldValue.ScalarValue(fs)}
+                : SceneSerializer.FieldUpdate) :: Nil
+            case None     => Nil
+        };
+        let scaleUpds = match snapshot#prevScale {
+            case Some(sc) => ({key = "scale",
+                value = SceneSerializer.FieldValue.VecValue(sc)}
+                : SceneSerializer.FieldUpdate) :: Nil
+            case None     => Nil
+        };
+        posUpd :: sizeUpds ++ fontSizeUpds ++ scaleUpds
+
     /// ノードの表示サイズと topLeftOffset を返す（編集対象でなければ None）。
     /// CanvasLayer は子の bbox の和集合で計算するため scene と path も受け取る。
     def rectInfoOf(engineNode: EngineNode[NodeTag], path: NodePath, scene: Scene[NodeTag]):

@@ -230,14 +230,16 @@ mod LwjglLayer {
     // Cursor Mapping (GameEngine.Cursor → GLFW standard cursor shape code)
     // ========================================================================
     //
-    // GLFW 3.3 系では NWSE / NESW の対角リサイズカーソルが提供されないため、
-    // 4 隅ハンドル用の AllResize には十字カーソル（CROSSHAIR_CURSOR）で代用する
+    // GLFW 3.4（LWJGL 3.3.4 に同梱）の cursor shape を使用する。
+    // NWSE / NESW の対角リサイズと ResizeAll は 3.4 で追加された
 
     def cursorShapeToGlfw(cursor: GameEngine.Cursor): Int32 = match cursor {
-        case GameEngine.Cursor.Default   => 0x36001  // GLFW_ARROW_CURSOR
-        case GameEngine.Cursor.HResize   => 0x36005  // GLFW_HRESIZE_CURSOR
-        case GameEngine.Cursor.VResize   => 0x36006  // GLFW_VRESIZE_CURSOR
-        case GameEngine.Cursor.AllResize => 0x36003  // GLFW_CROSSHAIR_CURSOR
+        case GameEngine.Cursor.Default    => 0x36001  // GLFW_ARROW_CURSOR
+        case GameEngine.Cursor.HResize    => 0x36005  // GLFW_HRESIZE_CURSOR
+        case GameEngine.Cursor.VResize    => 0x36006  // GLFW_VRESIZE_CURSOR
+        case GameEngine.Cursor.AllResize  => 0x36009  // GLFW_RESIZE_ALL_CURSOR
+        case GameEngine.Cursor.NWSEResize => 0x36007  // GLFW_RESIZE_NWSE_CURSOR
+        case GameEngine.Cursor.NESWResize => 0x36008  // GLFW_RESIZE_NESW_CURSOR
     }
 
     // ========================================================================
@@ -802,19 +804,23 @@ mod LwjglLayer {
         let renderStateHolder = Array#{((Nil: List[GameEngine.Drawable]),
                                          (Nil: List[GameEngine.TileMapRenderCmd]))} @ Static;
 
-        // 4 種のスタンダードカーソルを起動時に作成して再利用する。
+        // 6 種のスタンダードカーソルを起動時に作成して再利用する。
         // setCursor 呼び出しの度に都度作成 / 破棄すると重く、リーク源にもなる
         let arrowCursor = GLFW.glfwCreateStandardCursor(cursorShapeToGlfw(GameEngine.Cursor.Default));
         let hResizeCursor = GLFW.glfwCreateStandardCursor(cursorShapeToGlfw(GameEngine.Cursor.HResize));
         let vResizeCursor = GLFW.glfwCreateStandardCursor(cursorShapeToGlfw(GameEngine.Cursor.VResize));
         let allResizeCursor = GLFW.glfwCreateStandardCursor(cursorShapeToGlfw(GameEngine.Cursor.AllResize));
+        let nwseResizeCursor = GLFW.glfwCreateStandardCursor(cursorShapeToGlfw(GameEngine.Cursor.NWSEResize));
+        let neswResizeCursor = GLFW.glfwCreateStandardCursor(cursorShapeToGlfw(GameEngine.Cursor.NESWResize));
         // 同じ Cursor を毎フレーム渡されたときに glfwSetCursor を抑制するためのキャッシュ
         let lastCursorHolder = Array#{(GameEngine.Cursor.Default: GameEngine.Cursor)} @ Static;
         let cursorOf = cursor -> match cursor {
-            case GameEngine.Cursor.Default   => arrowCursor
-            case GameEngine.Cursor.HResize   => hResizeCursor
-            case GameEngine.Cursor.VResize   => vResizeCursor
-            case GameEngine.Cursor.AllResize => allResizeCursor
+            case GameEngine.Cursor.Default    => arrowCursor
+            case GameEngine.Cursor.HResize    => hResizeCursor
+            case GameEngine.Cursor.VResize    => vResizeCursor
+            case GameEngine.Cursor.AllResize  => allResizeCursor
+            case GameEngine.Cursor.NWSEResize => nwseResizeCursor
+            case GameEngine.Cursor.NESWResize => neswResizeCursor
         };
 
         // マウスホイールの y 方向 delta を 1 フレームぶん蓄積する。
@@ -950,6 +956,8 @@ mod LwjglLayer {
         GLFW.glfwDestroyCursor(hResizeCursor);
         GLFW.glfwDestroyCursor(vResizeCursor);
         GLFW.glfwDestroyCursor(allResizeCursor);
+        GLFW.glfwDestroyCursor(nwseResizeCursor);
+        GLFW.glfwDestroyCursor(neswResizeCursor);
 
         // OpenAL cleanup
         Map.forEach((_, src) -> AL10.alDeleteSources(src), audioRegistry);

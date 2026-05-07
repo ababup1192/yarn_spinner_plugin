@@ -85,10 +85,10 @@ mod DialogueScene {
 
     /// 1 キー入力を対話 UI として解釈する。
     ///   - 確定キー（Z/Space/Enter）:
-    ///       * options モード → tap → `submitSelect`
+    ///       * choices モード → tap → `submitSelect`
     ///       * typewriter 途中 → tap → `forceFullReveal`
-    ///       * `shouldShowAdvanceIndicator` のとき → tap → 手動 `submitAdvance`
-    ///       * それ以外（auto-advance 中・transition 中など） → 無視
+    ///       * `shouldShowNextIndicator` のとき → tap → 手動 `submitNext`
+    ///       * それ以外（auto-next 中・transition 中など） → 無視
     ///   - 上 (Up/W): カーソル -1
     ///   - 下 (Down/S): カーソル +1
     /// 表示中（visible=true）でないキーは黙って無視する。
@@ -104,16 +104,16 @@ mod DialogueScene {
             let isUp = key == GameEngine.Key.Up or key == GameEngine.Key.W;
             let isDown = key == GameEngine.Key.Down or key == GameEngine.Key.S;
             if (isConfirm) {
-                if (not List.isEmpty(state#options)) {
+                if (not List.isEmpty(state#choices)) {
                     GameEngine.Audio.playAudio("tap");
                     Dialogue.Session.submitSelect(state#cursor);
                     scene
-                } else if (not Dialogue.isLineFullyRevealed(state)) {
+                } else if (not Dialogue.isPanelFullyRevealed(state)) {
                     GameEngine.Audio.playAudio("tap");
                     mapState(s -> Dialogue.forceFullReveal(s), scene)
-                } else if (Dialogue.shouldShowAdvanceIndicator(state)) {
+                } else if (Dialogue.shouldShowNextIndicator(state)) {
                     GameEngine.Audio.playAudio("tap");
-                    Dialogue.Session.submitAdvance();
+                    Dialogue.Session.submitNext();
                     scene
                 } else scene
             } else if (isUp)
@@ -127,8 +127,8 @@ mod DialogueScene {
     /// 1. `Inbox.takeAll` で 1 フレーム分のイベントを取り出し、`Dialogue.applyEvent` で状態を進める
     /// 2. `Dialogue.tick(dt)` で typewriter / transition / 経過秒を進める
     /// 3. lines が増えたフレーム（新しい行が表示開始）で talk 効果音を鳴らす
-    /// 4. 継続 line の typewriter 完了などで `shouldAutoAdvance` が立っていれば
-    ///    `Session.submitAdvance` を発火（次フレームの takeAll で取り込まれる）
+    /// 4. 継続 line の typewriter 完了などで `shouldAutoNext` が立っていれば
+    ///    `Session.submitNext` を発火（次フレームの takeAll で取り込まれる）
     /// 5. 新しい layer ノードと、本文 / transition / インジケータを更新した scene を返す
     pub def process(delta: Duration.Duration,
                      layer: CanvasLayer,
@@ -137,6 +137,7 @@ mod DialogueScene {
                      (EngineNode[NodeTag], Scene[NodeTag])
                      \ {Dialogue.SceneView.Inbox, Dialogue.Session, GameEngine.Audio} =
         let events = Dialogue.SceneView.Inbox.takeAll();
+        
         let newState =
             List.foldLeft((s, event) -> Dialogue.applyEvent(event, s), state, events)
                 |> Dialogue.tick(delta);
@@ -144,7 +145,7 @@ mod DialogueScene {
         if (List.length(newState#lines) > List.length(state#lines))
             GameEngine.Audio.playAudio("talk")
         else ();
-        if (Dialogue.shouldAutoAdvance(newState)) Dialogue.Session.submitAdvance() else ();
+        if (Dialogue.shouldAutoNext(newState)) Dialogue.Session.submitNext() else ();
         let newLayer = CanvasItem.setVisible(newState#visible, layer);
         let newNode = EngineNode.CanvasLayerWithState(newLayer, NodeTag.Dialogue(newState));
         let newScene =
@@ -191,8 +192,8 @@ mod DialogueScene {
     /// blink 周期が ON のときだけインジケータ文字を入れる。それ以外は空文字で隠す。
     def updateIndicator(state: UIState, scene: Scene[NodeTag]): Scene[NodeTag] =
         let visible =
-            Dialogue.shouldShowAdvanceIndicator(state) and Dialogue.isBlinkOn(state);
-        let text = if (visible) state#profile#advanceIndicatorGlyph else "";
+            Dialogue.shouldShowNextIndicator(state) and Dialogue.isBlinkOn(state);
+        let text = if (visible) state#profile#nextIndicatorGlyph else "";
         Scene.mapEngineNode(indicatorPath(), engineNode ->
             EngineNode.mapLabel2D(label -> Label2D.setText(text, label), engineNode),
             scene)

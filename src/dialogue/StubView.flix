@@ -5,7 +5,7 @@
 /// effect 多相な `withRecordingView` を集約している。
 mod Dialogue.StubView {
     use Dialogue.ViewEvent
-    use Dialogue.ViewEvent.{Line, Options, Dismiss, Command, Complete}
+    use Dialogue.ViewEvent.{Line, Choices, Dismiss, Command, Complete}
 
     /// view 操作を region 内 MutDeque に蓄積し、body 終了時に List で返す。
     /// 他の effect は `ef` で透過する。
@@ -17,9 +17,9 @@ mod Dialogue.StubView {
                 MutDeque.pushBack(Line(line#text, line#speaker), log);
                 resume()
             }
-            def presentOptions(options, resume) = {
-                let texts = List.map(option -> option#text, options);
-                MutDeque.pushBack(Options(texts), log);
+            def presentChoices(choices, resume) = {
+                let labels = List.map(choice -> choice#text, choices);
+                MutDeque.pushBack(Choices(labels), log);
                 resume()
             }
             def dismissLine(resume) = {

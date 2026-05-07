@@ -6,7 +6,7 @@
 mod TestDialogueRunner {
     use Yarn.Types.YarnProject
     use Dialogue.{ViewEvent}
-    use Dialogue.ViewEvent.{Line, Options, Command, Complete}
+    use Dialogue.ViewEvent.{Line, Choices, Command, Complete}
 
     // fixture は `TestYarnFixture.loadProject()` 経由でインライン取得する。
 
@@ -35,20 +35,20 @@ mod TestDialogueRunner {
         let events = region rc {
             runWithStubs(rc, compiledProject, () -> {
                 Dialogue.Session.start("Start");          // → presentLine(おう: ゆうしゃよ…)
-                Dialogue.Session.submitAdvance();         // → presentLine(まおうを…)
-                Dialogue.Session.submitAdvance();         // → presentOptions([はい, いいえ])
+                Dialogue.Session.submitNext();         // → presentLine(まおうを…)
+                Dialogue.Session.submitNext();         // → presentChoices([はい, いいえ])
                 Dialogue.Session.submitSelect(0);         // → presentLine(たのもしいぞ)
-                Dialogue.Session.submitAdvance();         // → presentLine(HPは 0 ある)
-                Dialogue.Session.submitAdvance();         // → runCommand("wait 0.5") → 自動完了
+                Dialogue.Session.submitNext();         // → presentLine(HPは 0 ある)
+                Dialogue.Session.submitNext();         // → runCommand("wait 0.5") → 自動完了
                                                           //   → presentLine(たびだちじゃ)
-                Dialogue.Session.submitAdvance()           // → dialogueComplete
+                Dialogue.Session.submitNext()           // → dialogueComplete
             })
         };
         let speaker = Some("おう");
         let expected: List[ViewEvent] =
             Line("おう: ゆうしゃよ、よくぞ もどった！", speaker) ::
             Line("おう: まおうを たおすのじゃ。", speaker) ::
-            Options("はい" :: "いいえ" :: Nil) ::
+            Choices("はい" :: "いいえ" :: Nil) ::
             Line("おう: たのもしいぞ。", speaker) ::
             Line("おう: ＨＰは 0 ある。 きをつけてゆけ！", speaker) ::
             Command("wait 0.5") ::
@@ -69,10 +69,10 @@ mod TestDialogueRunner {
         let events = region rc {
             runWithStubs(rc, compiledProject, () -> {
                 Dialogue.Session.start("Start");          // → presentLine(おう: ゆうしゃよ)
-                Dialogue.Session.submitAdvance();         // → presentLine(まおうを)
-                Dialogue.Session.submitAdvance();         // → presentOptions
+                Dialogue.Session.submitNext();         // → presentLine(まおうを)
+                Dialogue.Session.submitNext();         // → presentChoices
                 Dialogue.Session.submitSelect(1);         // → presentLine(なさけないやつめ)
-                Dialogue.Session.submitAdvance()           // → 再帰 → presentLine(ゆうしゃよ 2 度目)
+                Dialogue.Session.submitNext()           // → 再帰 → presentLine(ゆうしゃよ 2 度目)
             })
         };
         // 5 イベント目（index=4）が 1 度目と同じ「ゆうしゃよ…」になっているか

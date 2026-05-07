@@ -73,8 +73,9 @@
       "name": "Indicator",
       "pos": [
         144,
-        60
+        6E+1
       ],
+      "rotation": 0,
       "text": "",
       "type": "Label2D",
       "zIndex": 4
@@ -86,6 +87,7 @@
     16,
     151
   ],
+  "rotation": 0,
   "scale": [
     1,
     1
