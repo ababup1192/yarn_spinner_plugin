@@ -80,7 +80,8 @@ mod Overlay {
                         scene: Scene[NodeTag]): Scene[NodeTag] \ GameEngine.Game =
         let ctx = {rootJsonIndex = rootJsonIndex, scene = scene};
         let entries = EditableNode.collectAll(ctx);
-        match Picking.pickTopAt(mousePos, entries, transform, scene) {
+        let preferDescendant = GameEngine.Game.isKeyPressed(GameEngine.Key.LeftShift);
+        match Picking.pickTopAt(mousePos, entries, transform, preferDescendant, scene) {
             case None => scene
             case Some((entry, _)) =>
                 if (isSelectedPath(entry#nodePath, selected)) scene

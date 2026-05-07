@@ -11,18 +11,29 @@
 mod Picking {
 
     /// 与えられた候補の中からマウス位置にヒットするものを 1 件返す。
-    /// 複数 hit する場合はレンダラの draw-order と同じ計算
-    /// （Scene.effectiveZIndexAt）で最も上に描かれるノードを優先する。
-    /// z-index が同値のときは entries の後ろ（preorder で後 = より深い／後発）を採用
+    /// 通常モードでは、ヒットしたノードの中に CanvasLayer のような「コンテナ」が
+    /// 含まれていれば、そのコンテナを最優先で返す（ダイアログウィンドウ全体を
+    /// 1 単位として動かしたいケースに合わせる）。
+    /// `preferDescendant = true` のときは従来どおり z-index 最大のノードを返す
+    /// （Shift+クリックで子要素を細かく選びたいケース）。
     pub def pickTopAt(mousePos: Vec2.Vec2,
                       entries: List[EditableNode.EditableEntry],
                       transform: Camera2D.ViewTransform,
+                      preferDescendant: Bool,
                       scene: Scene[NodeTag]):
             Option[(EditableNode.EditableEntry, Vec2.Vec2)] =
-        entries
-            |> List.filterMap(entry -> hitInfo(mousePos, entry, transform, scene))
-            |> highestZ
-            |> Option.map(hit -> (hit#entry, hit#screenPos))
+        let hits = entries
+            |> List.filterMap(entry -> hitInfo(mousePos, entry, transform, scene));
+        let chosen = if (preferDescendant)
+            highestZ(hits)
+        else
+            // コンテナがあれば最も浅い（root に近い）コンテナを優先。
+            // 無ければ z-index 最大のノードへフォールバック
+            match shallowestContainer(hits) {
+                case Some(hit) => Some(hit)
+                case None      => highestZ(hits)
+            };
+        Option.map(hit -> (hit#entry, hit#screenPos), chosen)
 
     /// 1 件分のヒット情報。z は `Scene.effectiveZIndexAt` の値
     type alias HitInfo = {
@@ -46,6 +57,18 @@ mod Picking {
             match best {
                 case None    => Some(cand)
                 case Some(b) => if (cand#z >= b#z) Some(cand) else best
+            }, None, hits)
+
+    /// hits の中で `isContainer = true` かつ NodePath が最も短い（root に近い）ものを返す。
+    /// コンテナが居なければ None。複数の最浅コンテナがあれば最初に見つけたもの。
+    def shallowestContainer(hits: List[HitInfo]): Option[HitInfo] =
+        List.foldLeft((best, cand) ->
+            if (not cand#entry#isContainer) best
+            else match best {
+                case None    => Some(cand)
+                case Some(b) => if (List.length(cand#entry#nodePath) < List.length(b#entry#nodePath))
+                                    Some(cand)
+                                else best
             }, None, hits)
 
     /// グローバル位置と EditableEntry から表示矩形 Rect2 を作る

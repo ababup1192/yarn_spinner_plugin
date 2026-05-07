@@ -18,8 +18,8 @@ mod Dialogue.Runner {
     use Dialogue.{PresentedLine, PresentedOption}
 
     /// 1 命令分の暴走防止に十分な大きい数。
-    /// `runUntilWaiting` が同じ pump で 1000 命令以上回ったらバグとみなして打ち切る。
-    def maxStepsPerPump(): Int32 = 1000
+    /// `runUntilWaiting` が同じ submit で 1000 命令以上回ったらバグとみなして打ち切る。
+    def maxStepsPerSubmit(): Int32 = 1000
 
     /// `Session` effect を実装する handler。
     /// 呼び出し元は `region rc { withRunner(rc, compiledProject, () -> ...) ... }` で使う。
@@ -33,7 +33,7 @@ mod Dialogue.Runner {
             def start(nodeName, resume) = {
                 let vm = Yarn.VM.init(rc, compiledProject, nodeName);
                 Ref.put(Some(vm), vmRef);
-                runUntilWaiting(vm, compiledProject, maxStepsPerPump());
+                runUntilWaiting(vm, compiledProject, maxStepsPerSubmit());
                 resume()
             }
 
@@ -50,7 +50,7 @@ mod Dialogue.Runner {
                 match Ref.get(vmRef) {
                     case Some(vm) => {
                         Yarn.VM.advance(vm);
-                        runUntilWaiting(vm, compiledProject, maxStepsPerPump());
+                        runUntilWaiting(vm, compiledProject, maxStepsPerSubmit());
                         resume()
                     }
                     case None => resume()
@@ -60,7 +60,7 @@ mod Dialogue.Runner {
                 match Ref.get(vmRef) {
                     case Some(vm) => {
                         Yarn.VM.selectOption(optionIndex, vm);
-                        runUntilWaiting(vm, compiledProject, maxStepsPerPump());
+                        runUntilWaiting(vm, compiledProject, maxStepsPerSubmit());
                         resume()
                     }
                     case None => resume()
@@ -70,7 +70,7 @@ mod Dialogue.Runner {
                 match Ref.get(vmRef) {
                     case Some(vm) => {
                         Yarn.VM.commandComplete(vm);
-                        runUntilWaiting(vm, compiledProject, maxStepsPerPump());
+                        runUntilWaiting(vm, compiledProject, maxStepsPerSubmit());
                         resume()
                     }
                     case None => resume()

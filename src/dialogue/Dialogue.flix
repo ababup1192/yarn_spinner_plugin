@@ -37,7 +37,7 @@ mod Dialogue {
     }
 
     /// `DialogueView` の各操作を 1 件のイベントとして表したもの。
-    /// `SceneView` handler が `MutDeque` に積み、`Pump.drain` 経由で
+    /// `SceneView` handler が `MutDeque` に積み、`Inbox.takeAll` 経由で
     /// 1 フレーム分まとめて取り出される。`StubView` も同じ enum をテストログとして使う。
     pub enum ViewEvent with Eq, ToString {
         /// `presentLine` 受信。本文と、表記から取り出した話者名（無ければ `None`）。
@@ -479,17 +479,17 @@ mod Dialogue {
     // facade — 対話 handler 一式を 1 行で適用する
     // ════════════════════════════════════════════════════════════════════════
 
-    /// `Runner` / `WaitOnly` / `SceneView`（DialogueView + Pump）を 1 つにまとめた
+    /// `Runner` / `WaitOnly` / `SceneView`（DialogueView + Inbox）を 1 つにまとめた
     /// facade。region と event queue を内部に閉じ込めるため、呼び出し側は
     /// scene 構築・入力・gameLoop だけに集中できる。
     ///
     /// `body` 内で `Dialogue.Session.start` などを呼ぶと、view 側のイベントは
-    /// `Dialogue.SceneView.Pump.drain` 経由で取り出せる（Scene 側の `process`
+    /// `Dialogue.SceneView.Inbox.takeAll` 経由で取り出せる（Scene 側の `process`
     /// で消化する想定）。
     pub def withDialog(yarnProject: Yarn.Types.YarnProject,
                         body: Unit -> a \ ef):
                          a \ (ef - Session - DialogueView - CommandRegistry
-                                 - Dialogue.SceneView.Pump) =
+                                 - Dialogue.SceneView.Inbox) =
         region rc {
             run body() with Dialogue.Runner.withRunner(rc, yarnProject)
                        with Dialogue.Commands.withWaitOnly

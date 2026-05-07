@@ -90,6 +90,8 @@ mod DragInput {
     /// クリック押下時: まず選択中ノードのリサイズハンドルに hit したかを判定し、
     /// hit していればリサイズドラッグを開始する。外していれば従来どおり編集対象ノードを
     /// pickTopAt で掴んで移動ドラッグを開始する。
+    /// Shift を押しながらクリックすると、コンテナ優先ピックを切って z-index 最大の
+    /// 子要素を直接掴める（ダイアログ内の個別 ColorRect を微調整したいとき用）。
     def handleMouseDown(mousePos: Vec2.Vec2, transform: Camera2D.ViewTransform,
                         stateData: Editor.EditorStateData,
                         scene: Scene[NodeTag]):
@@ -99,7 +101,8 @@ mod DragInput {
             case None =>
                 let ctx = {rootJsonIndex = stateData#rootJsonIndex, scene = scene};
                 let entries = EditableNode.collectAll(ctx);
-                let hit = Picking.pickTopAt(mousePos, entries, transform, scene);
+                let preferDescendant = GameEngine.Game.isKeyPressed(GameEngine.Key.LeftShift);
+                let hit = Picking.pickTopAt(mousePos, entries, transform, preferDescendant, scene);
                 match hit {
                     case None =>
                         ({selected = None, dragOrigin = None, nodeOrigin = None,

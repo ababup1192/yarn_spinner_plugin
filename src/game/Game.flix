@@ -20,12 +20,12 @@ pub enum NodeTag {
 /// `process` 内で auto-advance が `Session.submitAdvance` を、新行検知が
 /// `GameEngine.Audio.playAudio` を発火するため Aef は 3 つ必要。
 instance Node[NodeTag] {
-    type Aef = { Dialogue.SceneView.Pump, Dialogue.Session, GameEngine.Audio }
+    type Aef = { Dialogue.SceneView.Inbox, Dialogue.Session, GameEngine.Audio }
 
     redef process(delta: Duration.Duration, node: EngineNode[NodeTag],
                    _path: NodePath, scene: Scene[NodeTag]):
                     (EngineNode[NodeTag], Scene[NodeTag])
-                    \ {Dialogue.SceneView.Pump, Dialogue.Session, GameEngine.Audio} =
+                    \ {Dialogue.SceneView.Inbox, Dialogue.Session, GameEngine.Audio} =
         match node {
             case EngineNode.CanvasLayerWithState(layer, NodeTag.Dialogue(state)) =>
                 DialogueScene.process(delta, layer, state, scene)
@@ -93,7 +93,7 @@ mod Game {
     /// ゲーム起動エントリ。`initialHp` で Yarn 変数 `$hp` の初期値を外から注入する。
     /// fixture 側のデフォルトは 0 のため、注入しないと「HP 0 ある」表示になる。
     ///
-    /// 対話関連の handler 連結（Runner / WaitOnly / SceneView+Pump）は
+    /// 対話関連の handler 連結（Runner / WaitOnly / SceneView+Inbox）は
     /// `Dialogue.withDialog` に閉じ込めてあり、region / event queue は外には漏れない。
     /// `Editor.withState(rc)` で F1 トグル + ホットリロード監視 + EditHistory(undo) を注入する。
     pub def start(initialHp: Int32):
@@ -120,7 +120,7 @@ mod Game {
     ///   (5) 末尾再帰
     def gameLoop(fontAtlas: FontAtlas, scene: Scene[NodeTag]):
                   Unit \ {GameEngine.Game, GameEngine.Audio, Dialogue.Session,
-                          Dialogue.SceneView.Pump, Editor.EditorState,
+                          Dialogue.SceneView.Inbox, Editor.EditorState,
                           EditHistory.Rewind, Fs.FileRead, Fs.FileWrite,
                           IO, Chan, NonDet} =
         if (GameEngine.Game.shouldClose()
@@ -135,10 +135,18 @@ mod Game {
                 else afterEditor
                     |> GameEngine.handleInput
                     |> GameEngine.process(delta = dt, paused = false);
-            // (3) ホットリロード判定
+            // (3) ホットリロード判定。再構築時は対話の進行状態（UIState）を維持し、
+            // 表示ノード（Body / Transition / Indicator / layer の visible）も
+            // 旧状態から再同期する。エディタ ON 中は `process` が走らないので、
+            // ここで `syncDisplay` を呼んでおかないと Body の text が空文字
+            // （scene.json のデフォルト）のままになって会話が消えて見える。
             let next =
-                if (Editor.pollReload())
-                    buildScene(fontAtlas)   // scene.json 変更 → 全再構築
+                if (Editor.pollReload()) {
+                    let preservedState = DialogueScene.getState(updated);
+                    buildScene(fontAtlas)
+                        |> DialogueScene.mapState(_ -> preservedState)
+                        |> DialogueScene.syncDisplay(preservedState)
+                }
                 else updated;
             // (4) エディタオーバーレイ → 描画
             GameEngine.render(Editor.applyOverlay(fontAtlas, next));

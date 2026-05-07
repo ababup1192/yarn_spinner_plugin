@@ -124,19 +124,19 @@ mod DialogueScene {
         }
 
     /// レイヤノードの `process` ライフサイクル。
-    /// 1. `Pump.drain` で 1 フレーム分のイベントを取り出し、`Dialogue.applyEvent` で状態を進める
+    /// 1. `Inbox.takeAll` で 1 フレーム分のイベントを取り出し、`Dialogue.applyEvent` で状態を進める
     /// 2. `Dialogue.tick(dt)` で typewriter / transition / 経過秒を進める
     /// 3. lines が増えたフレーム（新しい行が表示開始）で talk 効果音を鳴らす
     /// 4. 継続 line の typewriter 完了などで `shouldAutoAdvance` が立っていれば
-    ///    `Session.submitAdvance` を発火（次フレームの drain で取り込まれる）
+    ///    `Session.submitAdvance` を発火（次フレームの takeAll で取り込まれる）
     /// 5. 新しい layer ノードと、本文 / transition / インジケータを更新した scene を返す
     pub def process(delta: Duration.Duration,
                      layer: CanvasLayer,
                      state: Dialogue.UIState,
                      scene: Scene[NodeTag]):
                      (EngineNode[NodeTag], Scene[NodeTag])
-                     \ {Dialogue.SceneView.Pump, Dialogue.Session, GameEngine.Audio} =
-        let events = Dialogue.SceneView.Pump.drain();
+                     \ {Dialogue.SceneView.Inbox, Dialogue.Session, GameEngine.Audio} =
+        let events = Dialogue.SceneView.Inbox.takeAll();
         let newState =
             List.foldLeft((s, event) -> Dialogue.applyEvent(event, s), state, events)
                 |> Dialogue.tick(delta);
@@ -153,6 +153,30 @@ mod DialogueScene {
                 |> updateTransition(newState)
                 |> updateIndicator(newState);
         (newNode, newScene)
+
+    /// 表示用のすべてのノード（layer の visible / Body / Transition / Indicator）を
+    /// `state` から再同期する。
+    /// 使い所はホットリロード後の表示復元など、`process` がしばらく走らない局面。
+    /// `process` も最終的にここと同じ更新を行うので、通常フレームでは呼ばなくてよい
+    pub def syncDisplay(state: UIState, scene: Scene[NodeTag]): Scene[NodeTag] =
+        scene
+            |> syncLayerVisibility(state)
+            |> updateBody(state)
+            |> updateTransition(state)
+            |> updateIndicator(state)
+
+    /// CanvasLayer の visible フラグを `state#visible` に合わせる。
+    /// 通常フレームでは `process` が新しい layer を組み立てるときに同じことをするが、
+    /// 再構築直後の scene は JSON のデフォルト visible=true で立ち上がっているので、
+    /// 進行中の対話状態に合わせて修正する必要がある
+    def syncLayerVisibility(state: UIState, scene: Scene[NodeTag]): Scene[NodeTag] =
+        Scene.mapEngineNode(layerPath(), engineNode ->
+            match engineNode {
+                case EngineNode.CanvasLayerWithState(layer, tag) =>
+                    EngineNode.CanvasLayerWithState(
+                        CanvasItem.setVisible(state#visible, layer), tag)
+                case other => other
+            }, scene)
 
     /// 本文 RichTextLabel のテキストを最新状態から同期する。
     def updateBody(state: UIState, scene: Scene[NodeTag]): Scene[NodeTag] =
