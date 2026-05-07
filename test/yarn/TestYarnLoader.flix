@@ -1,6 +1,7 @@
 /// Yarn ローダのテスト。
 ///
-/// `yarn/output.json` を fixture として実物を parse し、構造の妥当性を確認する。
+/// `TestYarnFixture.outputJsonText()` で fixture をインライン取得し、
+/// 実物を parse して構造の妥当性を確認する。ファイルシステム依存はない。
 /// 命令ごとの単体テストは VM テストに任せ、ここは「ロード後の全体像」が
 /// 期待どおりかをチェックする。
 mod TestYarnLoader {
@@ -9,30 +10,21 @@ mod TestYarnLoader {
     use Yarn.Types.Instruction.{RunLine, AddOption, ShowOptions, Return, RunNode}
     use Yarn.Loader.YarnLoadError
 
-    /// fixture: `yarn/output.json` を読み込んで parse する。
-    /// テスト全体の起点になるヘルパー。
-    def loadFixture(): YarnProject \ Fs.FileRead.FileRead =
-        let jsonText = Fs.FileRead.read("yarn/output.json") |> Result.getWithDefault("");
-        match Yarn.Loader.parseProject(jsonText) {
-            case Ok(loaded)  => loaded
-            case Err(error)  => bug!("fixture parse failed: ${error}")
-        }
-
     // ========================================================================
     // 構造: トップレベル
     // ========================================================================
 
     /// 3 つのノード Start / Quest / End がロードされる。
     @Test
-    def testTopLevelNodeNames(): Unit \ {Assert, Fs.FileRead.FileRead} =
-        let loaded = loadFixture();
+    def testTopLevelNodeNames(): Unit \ Assert =
+        let loaded = TestYarnFixture.loadProject();
         let nodeNames = Map.keysOf(loaded#program#nodes) |> Set.toList |> List.sort;
         Assert.assertEq(expected = "End" :: "Quest" :: "Start" :: Nil, nodeNames)
 
     /// 文字列テーブルに 9 行（はい/いいえ/各セリフ）が入っている。
     @Test
-    def testStringsTableSize(): Unit \ {Assert, Fs.FileRead.FileRead} =
-        let loaded = loadFixture();
+    def testStringsTableSize(): Unit \ Assert =
+        let loaded = TestYarnFixture.loadProject();
         Assert.assertEq(expected = 9, Map.size(loaded#strings))
 
     // ========================================================================
@@ -41,8 +33,8 @@ mod TestYarnLoader {
 
     /// Start ノードは 25 命令（output.json の index 0..24）。
     @Test
-    def testStartNodeInstructionCount(): Unit \ {Assert, Fs.FileRead.FileRead} =
-        let loaded = loadFixture();
+    def testStartNodeInstructionCount(): Unit \ Assert =
+        let loaded = TestYarnFixture.loadProject();
         let start = match Map.get("Start", loaded#program#nodes) {
             case Some(node) => node
             case None       => bug!("Start node missing")
@@ -51,8 +43,8 @@ mod TestYarnLoader {
 
     /// Start ノードの先頭命令は `runLine "line:9110649c" 0` である。
     @Test
-    def testStartNodeFirstInstruction(): Unit \ {Assert, Fs.FileRead.FileRead} =
-        let loaded = loadFixture();
+    def testStartNodeFirstInstruction(): Unit \ Assert =
+        let loaded = TestYarnFixture.loadProject();
         let start = match Map.get("Start", loaded#program#nodes) {
             case Some(node) => node
             case None       => bug!("Start node missing")
@@ -65,8 +57,8 @@ mod TestYarnLoader {
 
     /// 最終命令は Return。
     @Test
-    def testStartNodeLastInstruction(): Unit \ {Assert, Fs.FileRead.FileRead} =
-        let loaded = loadFixture();
+    def testStartNodeLastInstruction(): Unit \ Assert =
+        let loaded = TestYarnFixture.loadProject();
         let start = match Map.get("Start", loaded#program#nodes) {
             case Some(node) => node
             case None       => bug!("Start node missing")
@@ -84,8 +76,8 @@ mod TestYarnLoader {
     /// `$straight_yes` は false、`$hp` は 0.0、`$Yarn.Internal.Visiting.Start` は 0.0。
     /// 3 種類の Value バリアント（Bool/Float/未使用 String）の混在を一度に確認する。
     @Test
-    def testInitialValuesMixed(): Unit \ {Assert, Fs.FileRead.FileRead} =
-        let loaded = loadFixture();
+    def testInitialValuesMixed(): Unit \ Assert =
+        let loaded = TestYarnFixture.loadProject();
         let actual = (
             Map.get("\$straight_yes", loaded#program#initialValues),
             Map.get("\$hp", loaded#program#initialValues),

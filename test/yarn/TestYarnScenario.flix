@@ -28,13 +28,7 @@ mod TestYarnScenario {
         case No
     }
 
-    /// fixture をロードする。
-    def loadFixture(): YarnProject \ Fs.FileRead.FileRead =
-        let jsonText = Fs.FileRead.read("yarn/output.json") |> Result.getWithDefault("");
-        match Yarn.Loader.parseProject(jsonText) {
-            case Ok(loaded)  => loaded
-            case Err(error)  => bug!("fixture parse failed: ${error}")
-        }
+    // fixture は `TestYarnFixture.loadProject()` 経由でインライン取得する。
 
     /// VM を駆動して、各 Waiting* / Done に到達した時点でイベントを記録する。
     /// 選択肢に当たったら choices の先頭を消費して selectOption する。
@@ -95,8 +89,8 @@ mod TestYarnScenario {
 
     /// 「はい」を 1 回選ぶと、Quest ノードを通って対話が完了する。
     @Test
-    def testYesChoiceScenario(): Unit \ {Assert, Fs.FileRead.FileRead} =
-        let loaded = loadFixture();
+    def testYesChoiceScenario(): Unit \ Assert =
+        let loaded = TestYarnFixture.loadProject();
         let events = region rc {
             let vm = Yarn.VM.init(rc, loaded, "Start");
             runScenario(vm, Choice.Yes :: Nil, 1000)
@@ -122,8 +116,8 @@ mod TestYarnScenario {
     /// 「いいえ」を 1 回選んだあと、再帰で Start に戻り、最初の line:9110649c が再表示される。
     /// その後も「いいえ」を選び続けるが、まずは「いいえ」1 回時点での前 4 イベントを確認する。
     @Test
-    def testNoChoiceTriggersRecursion(): Unit \ {Assert, Fs.FileRead.FileRead} =
-        let loaded = loadFixture();
+    def testNoChoiceTriggersRecursion(): Unit \ Assert =
+        let loaded = TestYarnFixture.loadProject();
         // 「いいえ」を 100 回（実質無限）。max ステップで切られる前提。
         let manyNoChoices = List.repeat(100, Choice.No);
         let events = region rc {
@@ -148,8 +142,8 @@ mod TestYarnScenario {
     /// 最大ステップ数を 5 に絞ると、最初の Line に到達した直後で打ち切られる。
     /// `runScenario` の打ち切り保護が機能していることを確認する。
     @Test
-    def testStepLimitGuardsAgainstInfiniteLoop(): Unit \ {Assert, Fs.FileRead.FileRead} =
-        let loaded = loadFixture();
+    def testStepLimitGuardsAgainstInfiniteLoop(): Unit \ Assert =
+        let loaded = TestYarnFixture.loadProject();
         let events = region rc {
             let vm = Yarn.VM.init(rc, loaded, "Start");
             runScenario(vm, Choice.No :: Nil, 5)

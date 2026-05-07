@@ -8,13 +8,7 @@ mod TestDialogueRunner {
     use Dialogue.StubView.{ViewEvent}
     use Dialogue.StubView.ViewEvent.{PresentedLine, PresentedOptions, Command, Complete}
 
-    /// fixture: `yarn/output.json` を読み込む。
-    def loadFixture(): YarnProject \ Fs.FileRead.FileRead =
-        let jsonText = Fs.FileRead.read("yarn/output.json") |> Result.getWithDefault("");
-        match Yarn.Loader.parseProject(jsonText) {
-            case Ok(loaded)  => loaded
-            case Err(_)      => bug!("fixture parse failed")
-        }
+    // fixture は `TestYarnFixture.loadProject()` 経由でインライン取得する。
 
     /// `withRecordingView + withWaitOnly + withRunner` を 1 つの run で連結する
     /// effect-polymorphic ヘルパー。テスト本体は `Dialog` だけを使えばよい。
@@ -36,8 +30,8 @@ mod TestDialogueRunner {
     /// VM が wait コマンドを通って DialogueComplete に到達する。
     /// view 側で受け取るイベントの並びを 1 度に検証する。
     @Test
-    def testYesChoiceFlowsThroughView(): Unit \ {Assert, Fs.FileRead.FileRead} =
-        let compiledProject = loadFixture();
+    def testYesChoiceFlowsThroughView(): Unit \ Assert =
+        let compiledProject = TestYarnFixture.loadProject();
         let events = region rc {
             runWithStubs(rc, compiledProject, () -> {
                 Dialogue.Dialog.start("Start");          // → presentLine(おう: ゆうしゃよ…)
@@ -69,8 +63,8 @@ mod TestDialogueRunner {
     /// 先頭の `おう: ゆうしゃよ…` が 2 度提示される。
     /// 2 度目の表示まで進めて確認する。
     @Test
-    def testNoChoiceRecursesToStart(): Unit \ {Assert, Fs.FileRead.FileRead} =
-        let compiledProject = loadFixture();
+    def testNoChoiceRecursesToStart(): Unit \ Assert =
+        let compiledProject = TestYarnFixture.loadProject();
         let events = region rc {
             runWithStubs(rc, compiledProject, () -> {
                 Dialogue.Dialog.start("Start");          // → presentLine(おう: ゆうしゃよ)
