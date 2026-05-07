@@ -8,13 +8,18 @@ def main(): Unit \ {IO, Chan, NonDet} =
             windowHeight    = Game.windowHi(),
             title           = "Yarn Spinner Plugin",
             textureManifest = Nil,
-            fontManifest    = Nil,
+            // BestTen-DOT は 16px 単位の dot 字形なので bake サイズも 16 に揃える。
+            // 12 など中途半端な値で bake するとグリフが崩れて滲んで見える。
+            fontManifest    =
+                ({ name = "default", path = "fonts/BestTen-DOT.otf", fontSize = 16.0 }: GameEngine.FontEntry)
+                :: Nil,
             soundManifest   = Nil,
             clearColor      = {r = 0.1f32, g = 0.1f32, b = 0.15f32},
             maxDeltaTime    = 0.05
         };
         run {
-            Game.start()
+            // ゆうしゃの HP は外から注入（fixture デフォルトの 0 を上書き）。
+            Game.start(15)
         } with LwjglLayer.withLwjgl(config)
           with Fs.FileRead.runWithIO
           with Fs.FileWrite.runWithIO

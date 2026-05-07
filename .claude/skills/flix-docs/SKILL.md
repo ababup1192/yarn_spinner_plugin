@@ -187,15 +187,18 @@ def testFoo(): Unit \ Assert =
 ### 予約語に注意
 
 - `handler` は予約語（エフェクトハンドラで使用）
+- `project` は予約語（`let project = ...` でパースエラー）
 - import 文、変数名として使うとパースエラーになる
 - 代わりの英単語を使うか、2単語以上で命名する
 
 ```flix
-// NG: handler は予約語
+// NG: handler / project は予約語
 case Some((handler, params)) => ...
+let project = loadProject();
 
-// OK: 別の単語を使う
+// OK: 別の単語 / 接頭辞付きにする
 case Some((action, params)) => ...
+let yarnProject = loadProject();
 ```
 
 ### Channel API
