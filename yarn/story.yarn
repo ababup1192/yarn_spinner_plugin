@@ -1,33 +1,175 @@
 title: Start
 ---
-<<declare $straight_yes = false as bool>>
-// 話者: 本文 の形式が一般的
-おう: ゆうしゃよ、よくぞ もどった！
-おう: まおうを たおすのじゃ。
+<<declare $player_name = "ゆうしゃ" as string>>
+<<declare $brave = false as bool>>
+<<declare $hp = 100 as number>>
+<<declare $max_hp = 100 as number>>
+<<declare $inv_key = false as bool>>
+<<declare $inv_torch = false as bool>>
+<<declare $chest_opened = false as bool>>
+
+<<bgm play title loop>>
+<<bg title fade 0.5>>
+タイトル: 脱出 - 古城の鍵
+<<wait 0.8>>
+-> はじめから
+    <<bgm fade 0.5>>
+    <<jump Intro>>
+-> つづきから
+    <<load 1>>
+===
+
+title: Intro
+---
+<<bg dungeon fade 0.3>>
+<<sprite show ou center>>
+<<bgm play dungeon loop>>
+おう: ゆうしゃよ、よくぞ もどった。
+おう: なまえを なんとしたかな？
+-> アレフ
+    <<set $player_name = "アレフ">>
+-> ベータ
+    <<set $player_name = "ベータ">>
+おう: そうじゃ、{$player_name} じゃったな。
+おう: おぬしは ゆうかんか？
 -> はい
-    <<set $straight_yes = visited_count("Start") == 0>>
+    <<set $brave = true>>
     おう: たのもしいぞ。
-    <<jump Quest>>
 -> いいえ
-    おう: …なさけないやつめ。
-    ワシのわかいころは
-    ひのきのぼう と 300Gで
-    スライムをひたすら たおし
-    やっつけて
-    ひが くれるまで
-    くどくど...
-    <<jump Start>>
+    <<set $brave = false>>
+    おう: …まあ よかろう。
+<<sprite hide ou>>
+<<wait 0.3>>
+<<jump Room1>>
 ===
 
-title: Quest
+title: Room1
 ---
-<<declare $hp = 0>>
-おう: ＨＰは {$hp} ある。 きをつけてゆけ！
+<<bg room1 fade 0.5>>
+<<bgm play room loop>>
+<<hotspot unlock chest>>
+<<hotspot unlock door>>
+ナレーション: ここは ふるい へやだ。
+ナレーション: たからばこ と とびら が みえる。
+<<if visited_count("Room1") == 1>>
+    ナレーション: ({$player_name} は はじめて この へやに きた)
+<<else>>
+    ナレーション: (なんども みた こうけい だ)
+<<endif>>
+-> たからばこを しらべる
+    <<jump ChestNode>>
+-> とびらを あける
+    <<jump DoorNode>>
+-> やすむ
+    <<set $hp = $hp + 10>>
+    <<if $hp > $max_hp>>
+        <<set $hp = $max_hp>>
+    <<endif>>
+    ナレーション: HP が {$hp} に かいふくした。
+    <<jump Room1>>
+===
+
+title: ChestNode
+---
+<<if $chest_opened>>
+    <<sprite show chest open>>
+    ナレーション: たからばこは からっぽだ。
+<<else>>
+    <<sprite show chest closed>>
+    <<se chest_open>>
+    <<wait 0.4>>
+    <<sprite show chest open>>
+    ナレーション: たからばこを あけた！
+    <<set $chest_opened = true>>
+    <<item add key>>
+    <<set $inv_key = true>>
+    ナレーション: かぎを てに いれた。
+<<endif>>
+<<sprite hide chest>>
+<<jump Room1>>
+===
+
+title: DoorNode
+---
+<<if has_item("key")>>
+    <<se door_open>>
+    <<wait 0.5>>
+    ナレーション: かぎを つかって とびらを あけた！
+    <<jump Battle>>
+<<else>>
+    <<se locked>>
+    <<shake 0.3>>
+    ナレーション: かぎが かかっている。
+    <<jump Room1>>
+<<endif>>
+===
+
+title: Battle
+---
+<<bg boss fade 0.3>>
+<<bgm play battle loop>>
+<<sprite show dragon center>>
+ドラゴン: グルル… よくぞ ここまで きた。
+<<detour BattleLoop>>
+<<sprite hide dragon>>
+<<bgm fade 1.0>>
+<<jump Ending>>
+===
+
+title: BattleLoop
+---
+ドラゴン: HP {$hp} か。 たえられるかな？
+<<set $hp = $hp - 25>>
+<<se hit>>
+<<shake 0.4>>
+ナレーション: {$player_name} は {25} の ダメージ！ HP は {$hp} に なった。
+<<if $hp <= 0>>
+    <<jump GameOver>>
+<<endif>>
+-> こうげき
+    <<if $brave>>
+        ナレーション: ゆうかんに きりつけた！ クリティカル！
+        ドラゴン: グ… やられた…
+        <<return>>
+    <<else>>
+        ナレーション: おそるおそる きりつけた。
+        <<jump BattleLoop>>
+    <<endif>>
+-> にげる
+    <<if $hp > 50>>
+        ナレーション: たいりょく が ある うちに にげきった。
+        <<return>>
+    <<else>>
+        ナレーション: にげきれない！
+        <<jump BattleLoop>>
+    <<endif>>
+===
+
+title: Ending
+---
+<<bg ending fade 1.0>>
+<<bgm play ending loop>>
+おう: よくぞ もどった、{$player_name}。
+<<if $brave>>
+    おう: そなた こそ しんの ゆうしゃ じゃ。
+<<else>>
+    おう: ぶじで なによりじゃ。
+<<endif>>
+おう: たびの きろくを のこそう。
+<<save 1>>
+ナレーション: (セーブしました)
 <<wait 0.5>>
-おう: …では、たびだちじゃ。
+<<bgm fade 2.0>>
+<<jump Start>>
 ===
 
-title: End
+title: GameOver
 ---
-おう: また あおう。
+<<bg gameover fade 0.8>>
+<<bgm fade 0.5>>
+<<se die>>
+ナレーション: {$player_name} は たおれた。
+<<wait 1.0>>
+ナレーション: GAME OVER
+<<phase Start>>
 ===
