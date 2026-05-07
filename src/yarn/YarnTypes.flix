@@ -1,0 +1,102 @@
+/// Yarn Spinner の出力 JSON を Flix の型として表現する純粋データ定義。
+///
+/// このモジュールはエンジン層（`src/engine/` `src/scenes/` `src/game/`）に
+/// 一切依存しない。ローダ・VM・ストレージなど Yarn 関連の他モジュールから
+/// 参照される最下層。
+///
+/// JSON 構造との対応:
+///   program.nodes[name]              -> YarnNode
+///   program.nodes[name].instructions -> Vector[Instruction]
+///   program.initialValues[var]       -> Value
+///   strings[lineRef].text             -> Map[LineRef, String]
+mod Yarn.Types {
+
+    /// Yarn の値。スタック・変数・引数・戻り値で共通に使う。
+    /// JSON の `boolValue` / `floatValue` / `stringValue` の 3 種に対応。
+    pub enum Value with Eq, ToString {
+        case BoolV(Bool)
+        case FloatV(Float64)
+        case StringV(String)
+    }
+
+    /// 行を識別する文字列（例: "line:9110649c"）。
+    pub type alias LineRef = String
+
+    /// ノードヘッダの 1 エントリ。`title` や `$Yarn.Internal.TrackingVariable` など。
+    pub type alias Header = {
+        key   = String,
+        value = String
+    }
+
+    /// Yarn 仮想マシンの命令。16 種。
+    /// 各バリアントが必要な引数だけを持つように整形してある。
+    pub enum Instruction with Eq, ToString {
+        /// 1 行表示。スタック上位 N 個を pop して置換に使う。
+        case RunLine(LineRef, Int32)
+        /// 選択肢を蓄積する。最後の Bool は条件付きフラグ。
+        /// (lineId, destination, substitutionCount, hasCondition)
+        case AddOption(LineRef, Int32, Int32, Bool)
+        /// 蓄積済みの選択肢を提示し、ユーザの選択結果をスタックに push する。
+        case ShowOptions
+        /// スタック top を覗いて `false` ならジャンプ。pop しない。
+        case JumpIfFalse(Int32)
+        /// 無条件ジャンプ。
+        case JumpTo(Int32)
+        /// スタック top（数値）をジャンプ先として読み取る。pop しない。
+        case PeekAndJump
+        /// スタック top を捨てる。
+        case Pop
+        /// ノード終了。callStack を持つ場合は復帰、空なら対話完了。
+        case Return
+        /// 文字列をスタックに積む。
+        case PushString(String)
+        /// 数値をスタックに積む。
+        case PushFloat(Float64)
+        /// 変数の値をスタックに積む。
+        case PushVariable(String)
+        /// スタック top を変数に書き込む（pop はしない）。
+        case StoreVariable(String)
+        /// 関数を呼ぶ。直前の `pushFloat` で push した数値が引数の個数。
+        case CallFunc(String)
+        /// カスタムコマンド実行。スタック上位 N 個を pop して置換に使う。
+        case RunCommand(String, Int32)
+        /// 別ノードを呼び出す。callStack に戻り先を積んでから移動する。
+        case RunNode(String)
+    }
+
+    /// Yarn のノード（命令列とメタデータ）。
+    pub type alias YarnNode = {
+        name         = String,
+        headers      = List[Header],
+        instructions = Vector[Instruction]
+    }
+
+    /// プログラム全体。
+    pub type alias Program = {
+        name            = String,
+        nodes           = Map[String, YarnNode],
+        initialValues   = Map[String, Value],
+        languageVersion = Int32
+    }
+
+    /// 出力 JSON 全体（プログラム + 文字列テーブル）。
+    /// 診断情報 `diagnostics` は今のところ捨てている。
+    pub type alias YarnProject = {
+        program = Program,
+        strings = Map[LineRef, String]
+    }
+
+    /// 蓄積された選択肢の 1 エントリ。`AddOption` で追加され、`ShowOptions` で view に流れる。
+    pub type alias OptionEntry = {
+        lineId        = LineRef,
+        substitutions = List[String],
+        destination   = Int32,
+        available     = Bool
+    }
+
+    /// `RunNode` 時に保存する戻り先情報。
+    pub type alias CallFrame = {
+        nodeName                 = String,
+        returnInstructionPointer = Int32
+    }
+}
