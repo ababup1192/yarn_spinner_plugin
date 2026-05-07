@@ -15,27 +15,28 @@ pub enum NodeTag {
 }
 
 /// Node 実装。Dialogue レイヤの `process` を `DialogueScene.process` に委譲する。
-/// 子ノード（Bg / Body）と他タグは default 実装（no-op）。
+/// `process` 内で auto-advance が `Session.submitAdvance` を、新行検知が
+/// `GameEngine.Audio.playAudio` を発火するため Aef は 3 つ必要。
 instance Node[NodeTag] {
-    type Aef = { Dialogue.SceneView.Pump }
+    type Aef = { Dialogue.SceneView.Pump, Dialogue.Session, GameEngine.Audio }
 
-    redef process(_delta: Duration.Duration, node: EngineNode[NodeTag],
-                   path: NodePath, scene: Scene[NodeTag]):
-                    (EngineNode[NodeTag], Scene[NodeTag]) \ Dialogue.SceneView.Pump =
+    redef process(delta: Duration.Duration, node: EngineNode[NodeTag],
+                   _path: NodePath, scene: Scene[NodeTag]):
+                    (EngineNode[NodeTag], Scene[NodeTag])
+                    \ {Dialogue.SceneView.Pump, Dialogue.Session, GameEngine.Audio} =
         match node {
-            case EngineNode.CanvasLayerWithState(_, NodeTag.Dialogue(_)) =>
-                DialogueScene.process(node, path, scene)
+            case EngineNode.CanvasLayerWithState(layer, NodeTag.Dialogue(state)) =>
+                DialogueScene.process(delta, layer, state, scene)
             case _ => (node, scene)
         }
 }
 
-/// 入力ハンドラ。`Dialogue.Session` を発行し、対話 UI ロジックは
-/// `DialogueScene.input` にまるごと委譲する。
+/// 入力ハンドラ。確定キーで tap SE を鳴らすため `GameEngine.Audio` も Aef に含める。
 instance InputEvent.InputHandler[NodeTag] {
-    type Aef = { Dialogue.Session }
+    type Aef = { Dialogue.Session, GameEngine.Audio }
 
     redef onKeyPressed(key: GameEngine.Key, scene: Scene[NodeTag]):
-                        Scene[NodeTag] \ { Dialogue.Session } =
+                        Scene[NodeTag] \ { Dialogue.Session, GameEngine.Audio } =
         DialogueScene.input(key, scene)
 }
 
@@ -93,7 +94,7 @@ mod Game {
     ///
     /// 対話関連の handler 連結（Runner / WaitOnly / SceneView+Pump）は
     /// `Dialogue.withDialog` に閉じ込めてあり、region / event queue は外には漏れない。
-    pub def start(initialHp: Int32): Unit \ {GameEngine.Game, Fs.FileRead, IO, Chan, NonDet} =
+    pub def start(initialHp: Int32): Unit \ {GameEngine.Game, GameEngine.Audio, Fs.FileRead, IO, Chan, NonDet} =
         // 注意: Flix では `project` は予約語のため変数名に使えない。
         let yarnProject =
             loadProject()
@@ -110,8 +111,8 @@ mod Game {
     /// `handleInput` を `process` より先に置いているのは、押下キーで生まれた
     /// イベントを同フレーム内で消化して次の `render` に乗せるため。
     def gameLoop(scene: Scene[NodeTag]):
-                  Unit \ {GameEngine.Game, Dialogue.Session, Dialogue.SceneView.Pump,
-                          IO, Chan, NonDet} =
+                  Unit \ {GameEngine.Game, GameEngine.Audio, Dialogue.Session,
+                          Dialogue.SceneView.Pump, IO, Chan, NonDet} =
         if (GameEngine.Game.shouldClose()
             or GameEngine.Game.isKeyPressed(GameEngine.Key.Escape)) ()
         else {

@@ -13,7 +13,12 @@ def main(): Unit \ {IO, Chan, NonDet} =
             fontManifest    =
                 ({ name = "default", path = "fonts/BestTen-DOT.otf", fontSize = 16.0 }: GameEngine.FontEntry)
                 :: Nil,
-            soundManifest   = Nil,
+            // talk: 行が出るたびに頭の 1〜2 秒（自然減衰まで）を流す効果音
+            // tap : 確定キーで会話が進むタイミングの効果音
+            soundManifest   =
+                ({ name = "talk", path = "audio/talk.ogg", looping = false }: GameEngine.AudioEntry)
+                :: ({ name = "tap",  path = "audio/tap.ogg",  looping = false }: GameEngine.AudioEntry)
+                :: Nil,
             clearColor      = {r = 0.1f32, g = 0.1f32, b = 0.15f32},
             maxDeltaTime    = 0.05
         };
