@@ -5,15 +5,15 @@
 /// それを下流に正しく仲介すること」だけを検証する。
 mod TestDialogueRunner {
     use Yarn.Types.YarnProject
-    use Dialogue.StubView.{ViewEvent}
-    use Dialogue.StubView.ViewEvent.{PresentedLine, PresentedOptions, Command, Complete}
+    use Dialogue.{ViewEvent}
+    use Dialogue.ViewEvent.{Line, Options, Command, Complete}
 
     // fixture は `TestYarnFixture.loadProject()` 経由でインライン取得する。
 
     /// `withRecordingView + withWaitOnly + withRunner` を 1 つの run で連結する
     /// effect-polymorphic ヘルパー。テスト本体は `Dialog` だけを使えばよい。
     def runWithStubs(rc: Region[r], compiledProject: YarnProject,
-                      body: Unit -> Unit \ Dialogue.Dialog):
+                      body: Unit -> Unit \ Dialogue.Session):
                       List[ViewEvent] \ r =
         let (_, log) = Dialogue.StubView.withRecordingView(rc, () -> {
             Dialogue.Commands.withWaitOnly(() -> {
@@ -34,24 +34,24 @@ mod TestDialogueRunner {
         let compiledProject = TestYarnFixture.loadProject();
         let events = region rc {
             runWithStubs(rc, compiledProject, () -> {
-                Dialogue.Dialog.start("Start");          // → presentLine(おう: ゆうしゃよ…)
-                Dialogue.Dialog.submitAdvance();         // → presentLine(まおうを…)
-                Dialogue.Dialog.submitAdvance();         // → presentOptions([はい, いいえ])
-                Dialogue.Dialog.submitSelect(0);         // → presentLine(たのもしいぞ)
-                Dialogue.Dialog.submitAdvance();         // → presentLine(HPは 0 ある)
-                Dialogue.Dialog.submitAdvance();         // → runCommand("wait 0.5") → 自動完了
+                Dialogue.Session.start("Start");          // → presentLine(おう: ゆうしゃよ…)
+                Dialogue.Session.submitAdvance();         // → presentLine(まおうを…)
+                Dialogue.Session.submitAdvance();         // → presentOptions([はい, いいえ])
+                Dialogue.Session.submitSelect(0);         // → presentLine(たのもしいぞ)
+                Dialogue.Session.submitAdvance();         // → presentLine(HPは 0 ある)
+                Dialogue.Session.submitAdvance();         // → runCommand("wait 0.5") → 自動完了
                                                           //   → presentLine(たびだちじゃ)
-                Dialogue.Dialog.submitAdvance()           // → dialogueComplete
+                Dialogue.Session.submitAdvance()           // → dialogueComplete
             })
         };
         let expected: List[ViewEvent] =
-            PresentedLine("おう: ゆうしゃよ、よくぞ もどった！") ::
-            PresentedLine("おう: まおうを たおすのじゃ。") ::
-            PresentedOptions("はい" :: "いいえ" :: Nil) ::
-            PresentedLine("おう: たのもしいぞ。") ::
-            PresentedLine("おう: ＨＰは 0 ある。 きをつけてゆけ！") ::
+            Line("おう: ゆうしゃよ、よくぞ もどった！") ::
+            Line("おう: まおうを たおすのじゃ。") ::
+            Options("はい" :: "いいえ" :: Nil) ::
+            Line("おう: たのもしいぞ。") ::
+            Line("おう: ＨＰは 0 ある。 きをつけてゆけ！") ::
             Command("wait 0.5") ::
-            PresentedLine("おう: …では、たびだちじゃ。") ::
+            Line("おう: …では、たびだちじゃ。") ::
             Complete :: Nil;
         Assert.assertEq(expected = expected, events)
 
@@ -67,16 +67,16 @@ mod TestDialogueRunner {
         let compiledProject = TestYarnFixture.loadProject();
         let events = region rc {
             runWithStubs(rc, compiledProject, () -> {
-                Dialogue.Dialog.start("Start");          // → presentLine(おう: ゆうしゃよ)
-                Dialogue.Dialog.submitAdvance();         // → presentLine(まおうを)
-                Dialogue.Dialog.submitAdvance();         // → presentOptions
-                Dialogue.Dialog.submitSelect(1);         // → presentLine(なさけないやつめ)
-                Dialogue.Dialog.submitAdvance()           // → 再帰 → presentLine(ゆうしゃよ 2 度目)
+                Dialogue.Session.start("Start");          // → presentLine(おう: ゆうしゃよ)
+                Dialogue.Session.submitAdvance();         // → presentLine(まおうを)
+                Dialogue.Session.submitAdvance();         // → presentOptions
+                Dialogue.Session.submitSelect(1);         // → presentLine(なさけないやつめ)
+                Dialogue.Session.submitAdvance()           // → 再帰 → presentLine(ゆうしゃよ 2 度目)
             })
         };
         // 5 イベント目（index=4）が 1 度目と同じ「ゆうしゃよ…」になっているか
         let firstAndFifth = (List.nth(0, events), List.nth(4, events));
-        let expectedLine: ViewEvent = PresentedLine("おう: ゆうしゃよ、よくぞ もどった！");
+        let expectedLine: ViewEvent = Line("おう: ゆうしゃよ、よくぞ もどった！");
         let expected: (Option[ViewEvent], Option[ViewEvent]) =
             (Some(expectedLine), Some(expectedLine));
         Assert.assertEq(expected = expected, firstAndFifth)

@@ -1,31 +1,17 @@
-/// 対話 UI シーン。`NodeTag.Dialogue(Data)` を root に持つ CanvasLayer 1 枚で
-/// 「画面下半分の対話パネル」を実現する。
+/// 対話 UI シーン。`NodeTag.Dialogue(Dialogue.UIState)` を root に持つ
+/// CanvasLayer 1 枚で「画面下半分の対話パネル」を実現する。
+///
+/// 状態モデル（`UIState`）と純粋遷移（`applyEvent` / `moveCursor` /
+/// `formatBody`）は `mod Dialogue` 側にあるので、本モジュールは Scene 固有の
+/// 配置・描画ノード同期・入力配線だけを担当する。
 ///
 /// 役割（scene-editor / engine-guide 準拠）:
-///   (A) Types       — `Data`（表示状態）
 ///   (B) Constants   — ノード名・パス・レイアウト数値・フォント名・drawLayer
 ///   (C) 構築        — `addDialogueLayer`
-///   (D) ロジック    — `input` / `drainEvents` / `syncFromData` と純粋ヘルパ群
-///   (E) Boilerplate — `mapData` / `getData`
-///
-/// SceneView handler から流れてくる `ViewEvent` は `MutDeque` に貯められ、
-/// gameLoop が毎フレーム `drainEvents` で消化する。これで「`handleInput` が
-/// 戻すシーン」と「SceneView が書いたシーン」のマージ問題を回避している。
+///   (D) ロジック    — `input` / `process`（と内部の `syncFromData`）
+///   (E) Boilerplate — `mapState` / `getState`
 mod DialogueScene {
-    use Dialogue.StubView.ViewEvent
-    use Dialogue.StubView.ViewEvent.{PresentedLine, PresentedOptions, Dismissed, Command, Complete}
-
-    // ════════════════════════════════════════════════════════════════════════
-    // (A) Types
-    // ════════════════════════════════════════════════════════════════════════
-
-    /// 対話レイヤの表示状態。`NodeTag.Dialogue(Data)` でレイヤ root に持つ。
-    pub type alias Data = {
-        text     = String,        // line モードの本文。options モードでは空。
-        options  = List[String],  // 選択肢中なら non-empty。
-        cursor   = Int32,         // options 内の選択中 index（0 始まり）。
-        visible  = Bool           // 完了後 / 未開始は false。
-    }
+    use Dialogue.UIState
 
     // ════════════════════════════════════════════════════════════════════════
     // (B) Constants — ノード名・パス・レイアウト・描画設定
@@ -79,9 +65,8 @@ mod DialogueScene {
     // ════════════════════════════════════════════════════════════════════════
 
     /// 既存の Scene に対話レイヤを 1 枚積む。
-    /// 起動時の Data は `emptyData`（visible=false）なので、`Dialog.start` 後の
-    /// 最初の `presentLine` がキューに入って `drainEvents` で反映されるまで
-    /// 何も表示されない。
+    /// 起動時の状態は `Dialogue.emptyState`（visible=false）なので、
+    /// 最初の `presentLine` がキューに入って `process` で反映されるまで何も表示されない。
     ///
     /// `viewport` はゲームのデザイン解像度（Game.flix の designWi/designHi）。
     /// パネルはその下端に貼り付くように配置される。
@@ -110,73 +95,15 @@ mod DialogueScene {
                 |> Node2D.setPosition({x = bodyMarginX(), y = bodyMarginY()});
         scene
             |> Scene.addNode(layerName(),
-                EngineNode.CanvasLayerWithState(layer, NodeTag.Dialogue(emptyData())))
+                EngineNode.CanvasLayerWithState(layer, NodeTag.Dialogue(Dialogue.emptyState())))
             |> Scene.addChild(layerName(), bgName(),
                 EngineNode.ColorRectWithState(bg, NodeTag.NoTag))
             |> Scene.addChild(layerName(), bodyName(),
                 EngineNode.RichTextLabelWithState(body, NodeTag.NoTag))
 
     // ════════════════════════════════════════════════════════════════════════
-    // (D) ロジック
+    // (D) ロジック — 入力ディスパッチと process
     // ════════════════════════════════════════════════════════════════════════
-
-    // ── Data の純粋ヘルパ ──
-
-    /// 初期状態（未開始 = 非表示）。
-    pub def emptyData(): Data = {
-        text = "",
-        options = Nil,
-        cursor = 0,
-        visible = false
-    }
-
-    /// `presentLine` を反映した Data。
-    pub def lineData(text: String): Data = {
-        text = text,
-        options = Nil,
-        cursor = 0,
-        visible = true
-    }
-
-    /// `presentOptions` を反映した Data。カーソルは先頭にリセット。
-    pub def optionsData(options: List[String]): Data = {
-        text = "",
-        options = options,
-        cursor = 0,
-        visible = true
-    }
-
-    /// `dialogueComplete` を反映した Data（表示を消す）。
-    pub def closedData(): Data = emptyData()
-
-    /// 本文として表示する文字列を Data から組み立てる。
-    /// - options 空 → 本文 text をそのまま返す
-    /// - options 非空 → カーソル行に `> `、それ以外に `  ` を付けて改行連結
-    pub def formatBody(data: Data): String =
-        if (List.isEmpty(data#options)) data#text
-        else
-            List.mapWithIndex((index, option) ->
-                if (index == data#cursor) "> ${option}"
-                else "  ${option}",
-                data#options)
-                |> String.intercalate("\n")
-
-    /// `delta` だけカーソルを動かした Data を返す。
-    /// 範囲外は wrap-around（先頭から末尾へ、末尾から先頭へ）。
-    /// options が空のときは Data を変えない。
-    pub def moveCursor(delta: Int32, data: Data): Data =
-        let optionCount = List.length(data#options);
-        if (optionCount <= 0) data
-        else {
-            let raw = data#cursor + delta;
-            let normalized =
-                if (raw < 0) optionCount - 1
-                else if (raw >= optionCount) 0
-                else raw;
-            { cursor = normalized | data }
-        }
-
-    // ── 入力ディスパッチ（`InputHandler[NodeTag]` から委譲される）──
 
     /// 1 キー入力を対話 UI として解釈する。
     ///   - 確定キー（Z/Space/Enter）: options 空なら `submitAdvance`、非空なら `submitSelect`
@@ -184,9 +111,9 @@ mod DialogueScene {
     ///   - 下 (Down/S): カーソル +1
     /// 表示中（visible=true）でないキーは黙って無視する。
     pub def input(key: GameEngine.Key, scene: Scene[NodeTag]):
-                   Scene[NodeTag] \ Dialogue.Dialog =
-        let data = getData(scene);
-        if (not data#visible) scene
+                   Scene[NodeTag] \ Dialogue.Session =
+        let state = getState(scene);
+        if (not state#visible) scene
         else {
             let isConfirm =
                 key == GameEngine.Key.Z
@@ -195,68 +122,58 @@ mod DialogueScene {
             let isUp = key == GameEngine.Key.Up or key == GameEngine.Key.W;
             let isDown = key == GameEngine.Key.Down or key == GameEngine.Key.S;
             if (isConfirm) {
-                if (List.isEmpty(data#options)) Dialogue.Dialog.submitAdvance()
-                else Dialogue.Dialog.submitSelect(data#cursor);
+                if (List.isEmpty(state#options)) Dialogue.Session.submitAdvance()
+                else Dialogue.Session.submitSelect(state#cursor);
                 scene
             } else if (isUp)
-                mapData(d -> moveCursor(-1, d), scene)
+                mapState(s -> Dialogue.moveCursor(-1, s), scene)
             else if (isDown)
-                mapData(d -> moveCursor(1, d), scene)
+                mapState(s -> Dialogue.moveCursor(1, s), scene)
             else scene
         }
 
-    // ── ViewEvent → Scene への反映 ──
+    /// レイヤノードの `process` ライフサイクル。`Node[NodeTag]` instance から委譲される。
+    /// 1 フレーム分のイベントを `Dialogue.SceneView.Pump.drain` で取り出し、
+    /// `Dialogue.applyEvent` で状態を進めてから本文を同期する。
+    /// 子ノード（Bg / Body）には別の処理は無いので、ここで scene を最後まで仕上げる。
+    pub def process(node: EngineNode[NodeTag], _path: NodePath, scene: Scene[NodeTag]):
+                     (EngineNode[NodeTag], Scene[NodeTag]) \ Dialogue.SceneView.Pump =
+        let events = Dialogue.SceneView.Pump.drain();
+        let updatedScene =
+            List.foldLeft((s, event) ->
+                mapState(state -> Dialogue.applyEvent(event, state), s),
+                scene, events)
+                |> syncFromData;
+        (node, updatedScene)
 
-    /// 1 件の `ViewEvent` を Scene に反映する（Data の差し替えのみ）。
-    /// 本文や可視性の描画反映は `syncFromData` が担う。
-    def applyEvent(event: ViewEvent, scene: Scene[NodeTag]): Scene[NodeTag] =
-        match event {
-            case PresentedLine(text)       => mapData(_ -> lineData(text), scene)
-            case PresentedOptions(options) => mapData(_ -> optionsData(options), scene)
-            case Dismissed                 => scene
-            case Command(_)                => scene
-            case Complete                  => mapData(_ -> closedData(), scene)
-        }
-
-    /// `MutDeque` に貯まったイベントを順に消化し、最終的な Scene を返す。
-    /// 末尾再帰でキューを空にする。
-    pub def drainEvents(queue: MutDeque[ViewEvent, r], scene: Scene[NodeTag]):
-                         Scene[NodeTag] \ r =
-        match MutDeque.popFront(queue) {
-            case Some(event) => drainEvents(queue, applyEvent(event, scene))
-            case None        => scene
-        }
-
-    // ── Data → 描画ノード（RichTextLabel・可視性）の同期 ──
-
-    /// 現在の Data に応じて、レイヤの可視性と本文 RichTextLabel のテキストを更新する。
-    /// `drainEvents` の直後（および入力でカーソル移動した直後の同フレーム描画時）に呼ぶ。
-    pub def syncFromData(scene: Scene[NodeTag]): Scene[NodeTag] =
-        let data = getData(scene);
+    /// 現在の状態に応じて、レイヤの可視性と本文 RichTextLabel のテキストを更新する。
+    /// `process` のイベント反映直後と、入力でカーソル移動した直後の同フレーム描画前に呼ぶ。
+    def syncFromData(scene: Scene[NodeTag]): Scene[NodeTag] =
+        let state = getState(scene);
         scene
             |> Scene.mapEngineNode(layerPath(), engineNode ->
-                CanvasItem.setVisible(data#visible, engineNode))
+                CanvasItem.setVisible(state#visible, engineNode))
             |> Scene.mapEngineNode(bodyPath(), engineNode ->
                 EngineNode.mapRichTextLabel(label ->
-                    RichTextLabel.setText(formatBody(data), label), engineNode))
+                    RichTextLabel.setText(Dialogue.formatBody(state), label), engineNode))
 
     // ════════════════════════════════════════════════════════════════════════
-    // (E) Boilerplate — レイヤ Data の取得 / 変換
+    // (E) Boilerplate — レイヤ状態の取得 / 変換
     // ════════════════════════════════════════════════════════════════════════
 
-    /// レイヤノードに紐づく `Data` を取り出す。レイヤが居なければ `bug!`。
+    /// レイヤノードに紐づく `UIState` を取り出す。レイヤが居なければ `bug!`。
     /// 起動時に `addDialogueLayer` を必ず呼ぶ前提。
-    pub def getData(scene: Scene[NodeTag]): Data =
+    pub def getState(scene: Scene[NodeTag]): UIState =
         match Scene.getState(layerPath(), scene) {
-            case Some(NodeTag.Dialogue(data)) => data
-            case _ => bug!("DialogueScene.getData: dialogue layer not found")
+            case Some(NodeTag.Dialogue(state)) => state
+            case _ => bug!("DialogueScene.getState: dialogue layer not found")
         }
 
-    /// レイヤノードに紐づく `Data` を関数で変換する。
+    /// レイヤノードに紐づく `UIState` を関数で変換する。
     /// レイヤが居ない / 別タグなら何もしない（防御的）。
-    pub def mapData(f: Data -> Data, scene: Scene[NodeTag]): Scene[NodeTag] =
+    pub def mapState(f: UIState -> UIState, scene: Scene[NodeTag]): Scene[NodeTag] =
         Scene.mapState(layerPath(), tag -> match tag {
-            case NodeTag.Dialogue(data) => NodeTag.Dialogue(f(data))
-            case other                  => other
+            case NodeTag.Dialogue(state) => NodeTag.Dialogue(f(state))
+            case other                   => other
         }, scene)
 }

@@ -21,14 +21,14 @@ mod Dialogue.Runner {
     /// `runUntilWaiting` が同じ pump で 1000 命令以上回ったらバグとみなして打ち切る。
     def maxStepsPerPump(): Int32 = 1000
 
-    /// `Dialog` を実装する handler。
+    /// `Session` effect を実装する handler。
     /// 呼び出し元は `region rc { withRunner(rc, compiledProject, () -> ...) ... }` で使う。
-    /// body の中で `do Dialog.start("Start")` などが呼べるようになる。
+    /// body の中で `do Session.start("Start")` などが呼べるようになる。
     pub def withRunner(rc: Region[r], compiledProject: YarnProject, body: Unit -> a \ ef):
-                        a \ (ef - Dialogue.Dialog) + Dialogue.DialogueView
+                        a \ (ef - Dialogue.Session) + Dialogue.DialogueView
                           + Dialogue.CommandRegistry + r =
         let vmRef: Ref[Option[Yarn.VM.VM[r]], r] = Ref.fresh(rc, None);
-        run body() with handler Dialogue.Dialog {
+        run body() with handler Dialogue.Session {
 
             def start(nodeName, resume) = {
                 let vm = Yarn.VM.init(rc, compiledProject, nodeName);

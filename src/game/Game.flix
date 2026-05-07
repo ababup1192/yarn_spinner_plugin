@@ -8,29 +8,38 @@
 ///   - `gameLoop` は固定パイプライン: 終了判定 → handleInput → drainEvents → syncFromData → render
 
 /// Scene[s] のジェネリック s に当てるタグ。
-/// 対話レイヤだけがゲームロジックを持つ（root の Data に状態を集約）。
+/// 対話レイヤだけがゲームロジックを持つ（root の `Dialogue.UIState` に状態を集約）。
 pub enum NodeTag {
     case NoTag
-    case Dialogue(DialogueScene.Data)
+    case Dialogue(Dialogue.UIState)
 }
 
-/// 必要最低限の Node 実装（ライフサイクル副作用なし）。
+/// Node 実装。Dialogue レイヤの `process` を `DialogueScene.process` に委譲する。
+/// 子ノード（Bg / Body）と他タグは default 実装（no-op）。
 instance Node[NodeTag] {
-    type Aef = {}
+    type Aef = { Dialogue.SceneView.Pump }
+
+    redef process(_delta: Duration.Duration, node: EngineNode[NodeTag],
+                   path: NodePath, scene: Scene[NodeTag]):
+                    (EngineNode[NodeTag], Scene[NodeTag]) \ Dialogue.SceneView.Pump =
+        match node {
+            case EngineNode.CanvasLayerWithState(_, NodeTag.Dialogue(_)) =>
+                DialogueScene.process(node, path, scene)
+            case _ => (node, scene)
+        }
 }
 
-/// 入力ハンドラ。`Dialogue.Dialog` を発行し、対話 UI ロジックは
+/// 入力ハンドラ。`Dialogue.Session` を発行し、対話 UI ロジックは
 /// `DialogueScene.input` にまるごと委譲する。
 instance InputEvent.InputHandler[NodeTag] {
-    type Aef = { Dialogue.Dialog }
+    type Aef = { Dialogue.Session }
 
     redef onKeyPressed(key: GameEngine.Key, scene: Scene[NodeTag]):
-                        Scene[NodeTag] \ { Dialogue.Dialog } =
+                        Scene[NodeTag] \ { Dialogue.Session } =
         DialogueScene.input(key, scene)
 }
 
 mod Game {
-    use Dialogue.StubView.ViewEvent
     use Yarn.Types.YarnProject
 
     // ════════════════════════════════════════════════════════════════════════
@@ -82,42 +91,36 @@ mod Game {
     /// ゲーム起動エントリ。`initialHp` で Yarn 変数 `$hp` の初期値を外から注入する。
     /// fixture 側のデフォルトは 0 のため、注入しないと「HP 0 ある」表示になる。
     ///
-    /// 起動時 1 回だけ実行する常駐セットアップ:
-    ///   1. `region rc` で MutDeque（イベントキュー）を確保
-    ///   2. handler 連結（外側 → 内側）: SceneView → Commands → Runner
-    ///   3. `Dialog.start("Start")` で対話を開始
-    ///   4. `gameLoop` に渡す
+    /// 対話関連の handler 連結（Runner / WaitOnly / SceneView+Pump）は
+    /// `Dialogue.withDialog` に閉じ込めてあり、region / event queue は外には漏れない。
     pub def start(initialHp: Int32): Unit \ {GameEngine.Game, Fs.FileRead, IO, Chan, NonDet} =
-        region rc {
-            // 注意: Flix では `project` は予約語のため変数名に使えない。
-            let yarnProject =
-                loadProject()
-                    |> Yarn.overrideInitialFloat("\$hp", Int32.toFloat64(initialHp));
-            let scene0 = buildScene();
-            let queue: MutDeque[ViewEvent, rc] = MutDeque.empty(rc);
-            Dialogue.SceneView.withSceneView(rc, queue, () ->
-                Dialogue.Commands.withWaitOnly(() ->
-                    Dialogue.Runner.withRunner(rc, yarnProject, () -> {
-                        Dialogue.Dialog.start("Start");
-                        gameLoop(queue, scene0)
-                    })))
-        }
+        // 注意: Flix では `project` は予約語のため変数名に使えない。
+        let yarnProject =
+            loadProject()
+                |> Yarn.overrideInitialFloat("\$hp", Int32.toFloat64(initialHp));
+        run {
+            Dialogue.Session.start("Start");
+            gameLoop(buildScene())
+        } with Dialogue.withDialog(yarnProject)
 
-    /// メインループ。固定パイプライン:
-    ///   終了判定 → handleInput → drainEvents → syncFromData → render → 末尾再帰
-    /// `handleInput` の中で `DialogueScene.input` が `Dialog.submit*` を呼ぶと、
-    /// `withRunner` ハンドラが VM を pump し、結果のイベントを SceneView ハンドラが
-    /// `queue` に push する。`drainEvents` で次フレームのシーンに反映される。
-    def gameLoop(queue: MutDeque[ViewEvent, r], scene: Scene[NodeTag]):
-                  Unit \ {GameEngine.Game, Dialogue.Dialog, IO, Chan, NonDet, r} =
+    /// メインループ。Scene 操作は持たず、エンジン提供のパイプラインを順に呼ぶだけ：
+    ///   終了判定 → handleInput → process → render → 末尾再帰
+    /// 入力からのイベント取り込み（queue → Data → 描画ノード同期）は
+    /// `DialogueScene.process` が Node trait 経由で受け持つ。
+    /// `handleInput` を `process` より先に置いているのは、押下キーで生まれた
+    /// イベントを同フレーム内で消化して次の `render` に乗せるため。
+    def gameLoop(scene: Scene[NodeTag]):
+                  Unit \ {GameEngine.Game, Dialogue.Session, Dialogue.SceneView.Pump,
+                          IO, Chan, NonDet} =
         if (GameEngine.Game.shouldClose()
             or GameEngine.Game.isKeyPressed(GameEngine.Key.Escape)) ()
         else {
+            let dt = GameEngine.Game.getDeltaTime();
             let nextScene =
-                GameEngine.handleInput(scene)
-                    |> DialogueScene.drainEvents(queue)
-                    |> DialogueScene.syncFromData;
+                scene
+                    |> GameEngine.handleInput
+                    |> GameEngine.process(delta = dt, paused = false);
             GameEngine.render(nextScene);
-            gameLoop(queue, nextScene)
+            gameLoop(nextScene)
         }
 }

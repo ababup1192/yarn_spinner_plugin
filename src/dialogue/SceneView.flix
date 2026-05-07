@@ -1,36 +1,45 @@
-/// `Dialogue.DialogueView` の本番（Scene 統合用）handler。
+/// Yarn → Scene 統合のための view 側 handler 一式。
 ///
-/// 受け取ったイベントは `MutDeque[ViewEvent, r]` にそのまま貯めるだけで、
-/// シーンの書き換えは行わない。`gameLoop` が毎フレーム
-/// `DialogueScene.drainEvents` でキューを消化してシーンに反映する。
+/// `Dialogue.DialogueView` の本番（Scene 統合用）handler と、
+/// 蓄積されたイベントを 1 フレーム単位で取り出す `Pump` effect を
+/// セットで提供する。両者は内部の同じ `MutDeque` を介して受け渡す。
 ///
-/// `Dialogue.StubView.withRecordingView` と同じ「録画」スタイルの handler だが、
-/// 本モジュールはキューを呼び出し側に渡してもらい、フレーム単位で消化できるよう
-/// にした点が異なる（`withRecordingView` は body 終了時に `List` で返してしまう）。
+/// 設計の意図:
+///   - 受信ハンドラ（DialogueView）は scene を直接いじらず queue に push するだけ
+///   - 消費は `Pump.drain` を `process` ライフサイクル内で呼ぶ
+///   - これにより `handleInput` が返すシーンと「side channel で書き込まれたシーン」
+///     がマージされる必要がなくなる（pull 型）
+///
+/// `withSceneView(rc, body)` は queue 確保と両 handler 連結を内包し、
+/// 呼び出し側に queue を露出しない。
 mod Dialogue.SceneView {
-    use Dialogue.StubView.ViewEvent
-    use Dialogue.StubView.ViewEvent.{PresentedLine, PresentedOptions, Dismissed, Command, Complete}
+    use Dialogue.ViewEvent
+    use Dialogue.ViewEvent.{Line, Options, Dismiss, Command, Complete}
 
-    /// `DialogueView` を実装する handler。
-    ///
-    /// `queue` は呼び出し側で region に確保した MutDeque。本 handler はここに
-    /// `pushBack` するだけで、次フレームの `drainEvents` で消化される。
-    pub def withSceneView(_rc: Region[r],
-                          queue: MutDeque[ViewEvent, r],
-                          body: Unit -> a \ ef + Dialogue.DialogueView):
-                            a \ ef + r =
+    /// SceneView が貯めた `ViewEvent` を取り出す effect。
+    /// `process` の中で呼ばれ、handler 側が region 内 `MutDeque` を List に変換して返す。
+    /// gameLoop に scene 操作を漏らさず、フレーム毎の queue 消化を Node ライフサイクルに閉じる。
+    pub eff Pump {
+        def drain(): List[ViewEvent]
+    }
+
+    /// `DialogueView` と `Pump` を 1 つの `MutDeque` で繋ぐ handler セット。
+    /// queue は内部で region に確保するので呼び出し側は触らない。
+    pub def withSceneView(rc: Region[r], body: Unit -> a \ ef):
+                           a \ (ef - Dialogue.DialogueView - Pump) + r =
+        let queue: MutDeque[ViewEvent, r] = MutDeque.empty(rc);
         run body() with handler Dialogue.DialogueView {
             def presentLine(line, resume) = {
-                MutDeque.pushBack(PresentedLine(line#text), queue);
+                MutDeque.pushBack(Line(line#text), queue);
                 resume()
             }
             def presentOptions(options, resume) = {
                 let texts = List.map(option -> option#text, options);
-                MutDeque.pushBack(PresentedOptions(texts), queue);
+                MutDeque.pushBack(Options(texts), queue);
                 resume()
             }
             def dismissLine(resume) = {
-                MutDeque.pushBack(Dismissed, queue);
+                MutDeque.pushBack(Dismiss, queue);
                 resume()
             }
             def runCommand(commandText, resume) = {
@@ -41,5 +50,15 @@ mod Dialogue.SceneView {
                 MutDeque.pushBack(Complete, queue);
                 resume()
             }
+        } with handler Pump {
+            def drain(resume) = resume(drainAll(queue, Nil))
+        }
+
+    /// MutDeque から先頭 → 末尾の順で全要素を取り出して List で返す（破壊的）。
+    def drainAll(queue: MutDeque[ViewEvent, r], acc: List[ViewEvent]):
+                  List[ViewEvent] \ r =
+        match MutDeque.popFront(queue) {
+            case Some(event) => drainAll(queue, event :: acc)
+            case None        => List.reverse(acc)
         }
 }
