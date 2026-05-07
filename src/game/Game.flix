@@ -95,9 +95,9 @@ mod Game {
     ///
     /// 対話関連の handler 連結（Runner / WaitOnly / SceneView+Pump）は
     /// `Dialogue.withDialog` に閉じ込めてあり、region / event queue は外には漏れない。
-    /// `Editor.withState(rc)` で F1 トグル + ホットリロード監視を注入する。
+    /// `Editor.withState(rc)` で F1 トグル + ホットリロード監視 + EditHistory(undo) を注入する。
     pub def start(initialHp: Int32):
-            Unit \ {GameEngine.Game, GameEngine.Audio, Fs.FileRead,
+            Unit \ {GameEngine.Game, GameEngine.Audio, Fs.FileRead, Fs.FileWrite,
                     Fs.Glob, Fs.ModificationTime, IO, Chan, NonDet} =
         // 注意: Flix では `project` は予約語のため変数名に使えない。
         let yarnProject =
@@ -113,20 +113,21 @@ mod Game {
         }
 
     /// メインループ（7 段パイプライン）。
-    ///   (1) F1 トグル（エディタ入力を最優先）
+    ///   (1) F1 トグル + マウス選択 / ドラッグ / リサイズ / 矢印 nudge / Cmd+Z（エディタ入力を最優先）
     ///   (2) エディタ ON ならゲーム更新スキップ
     ///   (3) ホットリロード判定（scene.json 変更 → 全再構築）
     ///   (4) エディタオーバーレイ → 描画
     ///   (5) 末尾再帰
     def gameLoop(fontAtlas: FontAtlas, scene: Scene[NodeTag]):
                   Unit \ {GameEngine.Game, GameEngine.Audio, Dialogue.Session,
-                          Dialogue.SceneView.Pump, Editor.State,
-                          Fs.FileRead, IO, Chan, NonDet} =
+                          Dialogue.SceneView.Pump, Editor.EditorState,
+                          EditHistory.Rewind, Fs.FileRead, Fs.FileWrite,
+                          IO, Chan, NonDet} =
         if (GameEngine.Game.shouldClose()
             or GameEngine.Game.isKeyPressed(GameEngine.Key.Escape)) ()
         else {
             let dt = GameEngine.Game.getDeltaTime();
-            // (1) エディタ入力を最優先（F1 トグル）
+            // (1) エディタ入力を最優先
             let afterEditor = Editor.handleInput(scene);
             // (2) エディタ ON ならゲーム更新スキップ
             let updated =
@@ -140,7 +141,7 @@ mod Game {
                     buildScene(fontAtlas)   // scene.json 変更 → 全再構築
                 else updated;
             // (4) エディタオーバーレイ → 描画
-            GameEngine.render(Editor.applyOverlay(fontAtlas, NodeTag.NoTag, next));
+            GameEngine.render(Editor.applyOverlay(fontAtlas, next));
             gameLoop(fontAtlas, next)
         }
 }
