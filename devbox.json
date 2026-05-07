@@ -1,9 +1,12 @@
 {
   "$schema": "https://raw.githubusercontent.com/jetify-com/devbox/0.16.0/.schema/devbox.schema.json",
-  "packages": ["jdk@21"],
+  "packages": ["jdk@21", "dotnet-sdk_9", "git"],
   "shell": {
     "init_hook": [
-      "export PATH=\"$PWD/bin:$PATH\""
+      "export PATH=\"$PWD/bin:$PATH\"",
+      "mkdir -p yarn/.bin",
+      "if [ ! -f yarn/.bin/ysc ]; then echo 'Building a self-contained ysc...'; git clone --recursive --depth 1 https://github.com/YarnSpinnerTool/YarnSpinner-Console.git .ysc-src && dotnet publish .ysc-src/src/YarnSpinner.Console/ysc.csproj -c Release -r osx-arm64 --self-contained true -p:PublishSingleFile=true -p:PublishTrimmed=false -o yarn/.bin/ && rm -rf .ysc-src; fi",
+      "alias ysc=\"$PWD/yarn/.bin/ysc\""
     ],
     "scripts": {
       "flix": "java -jar $PWD/bin/flix.jar",

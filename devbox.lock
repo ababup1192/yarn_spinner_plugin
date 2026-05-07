@@ -1,6 +1,14 @@
 {
   "lockfile_version": "1",
   "packages": {
+    "dotnet-sdk_9": {
+      "resolved": "github:NixOS/nixpkgs/15c6719d8c604779cf59e03c245ea61d3d7ab69b#dotnet-sdk_9",
+      "source": "nixpkg"
+    },
+    "git": {
+      "resolved": "github:NixOS/nixpkgs/15c6719d8c604779cf59e03c245ea61d3d7ab69b#git",
+      "source": "nixpkg"
+    },
     "github:NixOS/nixpkgs/nixpkgs-unstable": {
       "last_modified": "2026-03-30T07:26:21Z",
       "resolved": "github:NixOS/nixpkgs/15c6719d8c604779cf59e03c245ea61d3d7ab69b?lastModified=1774855581"

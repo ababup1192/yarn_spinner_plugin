@@ -1,0 +1,33 @@
+title: Start
+---
+<<declare $straight_yes = false as bool>>
+// 話者: 本文 の形式が一般的
+おう: ゆうしゃよ、よくぞ もどった！
+おう: まおうを たおすのじゃ。
+-> はい
+    <<set $straight_yes = visited_count("Start") == 0>>
+    おう: たのもしいぞ。
+    <<jump Quest>>
+-> いいえ
+    おう: …なさけないやつめ。
+    ワシのわかいころは
+    ひのきのぼう と 300Gで
+    スライムをひたすら たおし
+    やっつけて
+    ひが くれるまで
+    くどくど...
+    <<jump Start>>
+===
+
+title: Quest
+---
+<<declare $hp = 0>>
+おう: ＨＰは {$hp} ある。 きをつけてゆけ！
+<<wait 0.5>>
+おう: …では、たびだちじゃ。
+===
+
+title: End
+---
+おう: また あおう。
+===
