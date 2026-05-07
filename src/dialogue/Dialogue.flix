@@ -70,17 +70,17 @@ mod Dialogue {
     ///       false なら名前 prefix は単なる装飾（log スタイル等）
     ///   - `autoAdvanceContinuation`: 継続行で typewriter 完了時に自動で次へ進めるか。
     ///       false なら毎行確定キーが要る（VN 風）
-    ///   - `transitionDurationSeconds`: パネル切り替え演出の継続時間（秒）
+    ///   - `transitionDuration`: パネル切り替え演出の継続時間
     ///   - `revealCharsPerSecond`: typewriter の送出速度（文字 / 秒）
-    ///   - `blinkPeriodSeconds`: 続行待ちインジケータの点滅 1 サイクル長（秒）。半周期で ON/OFF 切替
+    ///   - `blinkPeriod`: 続行待ちインジケータの点滅 1 サイクル長。半周期で ON/OFF 切替
     ///   - `advanceIndicatorGlyph`: 続行待ちインジケータの表示記号。描画側で表示可能なフォントを用意する
     pub type alias DialogueProfile = {
         maxLinesPerPanel          = Int32,
         breakOnSpeakerLine        = Bool,
         autoAdvanceContinuation   = Bool,
-        transitionDurationSeconds = Float64,
+        transitionDuration        = Duration.Duration,
         revealCharsPerSecond      = Float64,
-        blinkPeriodSeconds        = Float64,
+        blinkPeriod               = Duration.Duration,
         advanceIndicatorGlyph     = String
     }
 
@@ -89,9 +89,9 @@ mod Dialogue {
         maxLinesPerPanel          = 3,
         breakOnSpeakerLine        = true,
         autoAdvanceContinuation   = true,
-        transitionDurationSeconds = 0.6,
+        transitionDuration        = Duration.seconds(0.6),
         revealCharsPerSecond      = 40.0,
-        blinkPeriodSeconds        = 0.5,
+        blinkPeriod               = Duration.seconds(0.5),
         advanceIndicatorGlyph     = "▼"
     }
 
@@ -100,9 +100,9 @@ mod Dialogue {
         maxLinesPerPanel          = 1,
         breakOnSpeakerLine        = false,
         autoAdvanceContinuation   = false,
-        transitionDurationSeconds = 0.2,
+        transitionDuration        = Duration.seconds(0.2),
         revealCharsPerSecond      = 50.0,
-        blinkPeriodSeconds        = 0.5,
+        blinkPeriod               = Duration.seconds(0.5),
         advanceIndicatorGlyph     = "▼"
     }
 
@@ -128,7 +128,7 @@ mod Dialogue {
         cursor          = Int32,              // options 内の選択中 index（0 始まり）
         visible         = Bool,               // 完了後 / 未開始は false
         revealProgress  = Float64,            // パネル全体の typewriter 進捗（文字数累積）
-        elapsed         = Float64,            // 表示中の経過秒（点滅用）
+        elapsed         = Duration.Duration,  // 表示中の経過時間（点滅用）
         lastLineHadName = Bool,               // 最新 line に名前 prefix が付いていたか
         transition      = Option[Transition], // 直前パネルのスクロール演出
         pendingEvent    = Option[ViewEvent],  // transition 完了後に適用するイベント
@@ -147,7 +147,7 @@ mod Dialogue {
         cursor = 0,
         visible = false,
         revealProgress = 0.0,
-        elapsed = 0.0,
+        elapsed = Duration.zero(),
         lastLineHadName = false,
         transition = None,
         pendingEvent = None,
@@ -280,17 +280,17 @@ mod Dialogue {
             { cursor = normalized | state }
         }
 
-    /// 1 フレーム経過分の更新。typewriter / transition / 経過秒の 3 つを進める。
-    pub def tick(deltaSeconds: Float64, state: UIState): UIState =
+    /// 1 フレーム経過分の更新。typewriter / transition / 経過時間の 3 つを進める。
+    pub def tick(delta: Duration.Duration, state: UIState): UIState =
         state
-            |> tickReveal(deltaSeconds)
-            |> tickTransition(deltaSeconds)
-            |> tickElapsed(deltaSeconds)
+            |> tickReveal(delta)
+            |> tickTransition(delta)
+            |> tickElapsed(delta)
 
-    /// 表示中の経過秒を進める。点滅などのアニメーションに使う。
-    def tickElapsed(deltaSeconds: Float64, state: UIState): UIState =
+    /// 表示中の経過時間を進める。点滅などのアニメーションに使う。
+    def tickElapsed(delta: Duration.Duration, state: UIState): UIState =
         if (not state#visible) state
-        else { elapsed = state#elapsed + deltaSeconds | state }
+        else { elapsed = Duration.add(state#elapsed, delta) | state }
 
     /// パネル内の全行の合計文字数。typewriter は **panel 全体を 1 つの連続列** として
     /// 進むため、cap や完了判定はこの合計と比較する。
@@ -299,26 +299,27 @@ mod Dialogue {
 
     /// typewriter を進める内部関数。cap は **panel 内全行の合計文字数**。
     /// 行が append されると cap が伸びるので、そのまま typewriter が次行へ流れていく。
-    def tickReveal(deltaSeconds: Float64, state: UIState): UIState =
+    def tickReveal(delta: Duration.Duration, state: UIState): UIState =
         if (not state#visible) state
         else if (not List.isEmpty(state#options)) state
         else if (List.isEmpty(state#lines)) state
         else {
             let cap = Int32.toFloat64(totalCharCount(state));
+            let dt = Duration.toSeconds(delta);
             let advanced =
-                state#revealProgress + deltaSeconds * state#profile#revealCharsPerSecond;
+                state#revealProgress + dt * state#profile#revealCharsPerSecond;
             { revealProgress = Float64.min(cap, advanced) | state }
         }
 
     /// transition の `progress` を進め、1.0 を超えたら `None` に戻す。
     /// ちょうど完了したフレームで `pendingEvent` を `applyEventInner` で反映する
     /// （= 演出が終わるまで次の文章は出さないというゲート）。
-    def tickTransition(deltaSeconds: Float64, state: UIState): UIState =
+    def tickTransition(delta: Duration.Duration, state: UIState): UIState =
         match state#transition {
             case None => state
             case Some(transition) =>
                 let advanced =
-                    transition#progress + deltaSeconds / state#profile#transitionDurationSeconds;
+                    transition#progress + Duration.toSeconds(delta) / Duration.toSeconds(state#profile#transitionDuration);
                 if (advanced >= 1.0) {
                     let cleared = { transition = None | state };
                     match state#pendingEvent {
@@ -407,10 +408,10 @@ mod Dialogue {
             and List.length(state#lines) < state#profile#maxLinesPerPanel
 
     /// 点滅インジケータの ON/OFF を `elapsed` から決める。
-    /// 半周期ごとに切り替わる（`profile#blinkPeriodSeconds` × 2 で 1 サイクル）。
+    /// 半周期ごとに切り替わる（`profile#blinkPeriod` × 2 で 1 サイクル）。
     pub def isBlinkOn(state: UIState): Bool =
         let cycles =
-            Float64.floor(state#elapsed / state#profile#blinkPeriodSeconds)
+            Float64.floor(Duration.toSeconds(state#elapsed) / Duration.toSeconds(state#profile#blinkPeriod))
                 |> Float64.tryToInt32
                 |> Option.getWithDefault(0);
         Int32.modulo(cycles, 2) == 0

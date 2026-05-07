@@ -5,7 +5,9 @@
 ///   - `NodeTag.Dialogue(DialogueScene.Data)` でレイヤ状態を NodeTag に内包
 ///   - `InputHandler[NodeTag]` は `DialogueScene.input` に委譲するだけ（dispatch のみ）
 ///   - `mod Game` は配線役。シーン構築・ロジックは XxxScene 側
-///   - `gameLoop` は固定パイプライン: 終了判定 → handleInput → drainEvents → syncFromData → render
+///   - `gameLoop` は 7 段パイプライン:
+///       F1 トグル → エディタ ON 判定 → ゲーム更新 → ホットリロード判定
+///       → エディタオーバーレイ → 描画 → 末尾再帰
 
 /// Scene[s] のジェネリック s に当てるタグ。
 /// 対話レイヤだけがゲームロジックを持つ（root の `Dialogue.UIState` に状態を集約）。
@@ -79,8 +81,8 @@ mod Game {
 
     /// 対話レイヤを 1 枚積んだ初期シーンを構築する。
     /// `addDialogueLayer` 自身が `DialogueScene.scene.json` を読みに行くので Fs.FileRead が必要。
-    def buildScene(): Scene[NodeTag] \ {GameEngine.Game, Fs.FileRead} =
-        let fontAtlas = GameEngine.Game.getFontAtlas(DialogueScene.fontName());
+    /// `fontAtlas` は `start` で事前取得して渡す（ホットリロード時の再構築でも再利用）。
+    def buildScene(fontAtlas: FontAtlas): Scene[NodeTag] \ {GameEngine.Game, Fs.FileRead} =
         Scene.empty()
             |> DialogueScene.addDialogueLayer(fontAtlas)
 
@@ -93,34 +95,52 @@ mod Game {
     ///
     /// 対話関連の handler 連結（Runner / WaitOnly / SceneView+Pump）は
     /// `Dialogue.withDialog` に閉じ込めてあり、region / event queue は外には漏れない。
-    pub def start(initialHp: Int32): Unit \ {GameEngine.Game, GameEngine.Audio, Fs.FileRead, IO, Chan, NonDet} =
+    /// `Editor.withState(rc)` で F1 トグル + ホットリロード監視を注入する。
+    pub def start(initialHp: Int32):
+            Unit \ {GameEngine.Game, GameEngine.Audio, Fs.FileRead,
+                    Fs.Glob, Fs.ModificationTime, IO, Chan, NonDet} =
         // 注意: Flix では `project` は予約語のため変数名に使えない。
         let yarnProject =
             loadProject()
                 |> Yarn.overrideInitialFloat("\$hp", Int32.toFloat64(initialHp));
-        run {
-            Dialogue.Session.start("Start");
-            gameLoop(buildScene())
-        } with Dialogue.withDialog(yarnProject)
+        let fontAtlas = GameEngine.Game.getFontAtlas(DialogueScene.fontName());
+        region rc {
+            run {
+                Dialogue.Session.start("Start");
+                gameLoop(fontAtlas, buildScene(fontAtlas))
+            } with Editor.withState(rc)
+              with Dialogue.withDialog(yarnProject)
+        }
 
-    /// メインループ。Scene 操作は持たず、エンジン提供のパイプラインを順に呼ぶだけ：
-    ///   終了判定 → handleInput → process → render → 末尾再帰
-    /// 入力からのイベント取り込み（queue → Data → 描画ノード同期）は
-    /// `DialogueScene.process` が Node trait 経由で受け持つ。
-    /// `handleInput` を `process` より先に置いているのは、押下キーで生まれた
-    /// イベントを同フレーム内で消化して次の `render` に乗せるため。
-    def gameLoop(scene: Scene[NodeTag]):
+    /// メインループ（7 段パイプライン）。
+    ///   (1) F1 トグル（エディタ入力を最優先）
+    ///   (2) エディタ ON ならゲーム更新スキップ
+    ///   (3) ホットリロード判定（scene.json 変更 → 全再構築）
+    ///   (4) エディタオーバーレイ → 描画
+    ///   (5) 末尾再帰
+    def gameLoop(fontAtlas: FontAtlas, scene: Scene[NodeTag]):
                   Unit \ {GameEngine.Game, GameEngine.Audio, Dialogue.Session,
-                          Dialogue.SceneView.Pump, IO, Chan, NonDet} =
+                          Dialogue.SceneView.Pump, Editor.State,
+                          Fs.FileRead, IO, Chan, NonDet} =
         if (GameEngine.Game.shouldClose()
             or GameEngine.Game.isKeyPressed(GameEngine.Key.Escape)) ()
         else {
             let dt = GameEngine.Game.getDeltaTime();
-            let nextScene =
-                scene
+            // (1) エディタ入力を最優先（F1 トグル）
+            let afterEditor = Editor.handleInput(scene);
+            // (2) エディタ ON ならゲーム更新スキップ
+            let updated =
+                if (Editor.isOn()) afterEditor
+                else afterEditor
                     |> GameEngine.handleInput
                     |> GameEngine.process(delta = dt, paused = false);
-            GameEngine.render(nextScene);
-            gameLoop(nextScene)
+            // (3) ホットリロード判定
+            let next =
+                if (Editor.pollReload())
+                    buildScene(fontAtlas)   // scene.json 変更 → 全再構築
+                else updated;
+            // (4) エディタオーバーレイ → 描画
+            GameEngine.render(Editor.applyOverlay(fontAtlas, NodeTag.NoTag, next));
+            gameLoop(fontAtlas, next)
         }
 }

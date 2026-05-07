@@ -137,10 +137,9 @@ mod DialogueScene {
                      (EngineNode[NodeTag], Scene[NodeTag])
                      \ {Dialogue.SceneView.Pump, Dialogue.Session, GameEngine.Audio} =
         let events = Dialogue.SceneView.Pump.drain();
-        let dt = Duration.toSeconds(delta);
         let newState =
             List.foldLeft((s, event) -> Dialogue.applyEvent(event, s), state, events)
-                |> Dialogue.tick(dt);
+                |> Dialogue.tick(delta);
         // 行が新しく追加されたフレームで talk SE を頭から再生（自然減衰で勝手に止まる）
         if (List.length(newState#lines) > List.length(state#lines))
             GameEngine.Audio.playAudio("talk")
