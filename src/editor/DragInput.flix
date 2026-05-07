@@ -50,13 +50,19 @@ mod DragInput {
         }
 
     /// ドラッグ中: マウスの移動量に応じてノードのグローバル位置を更新する。
+    /// グローバル位置を整数に丸めたうえで、setGlobalPositionAt が逆算したローカル位置も
+    /// 再度整数に丸める（親に小数オフセットがあってもローカル座標が整数で揃う）。
     pub def applyDrag(mousePos: Vec2.Vec2, stateData: Editor.EditorStateData,
                       scene: Scene[NodeTag]): Scene[NodeTag] =
         match (stateData#selected, stateData#dragOrigin, stateData#nodeOrigin) {
             case (Some((_, nodePath)), Some(dragOrigin), Some(nodeOrigin)) =>
                 let delta = Vec2.sub(mousePos, dragOrigin);
-                let newGlobalPos = snapVec2(Vec2.add(nodeOrigin, delta));
-                Scene.setGlobalPositionAt(nodePath, newGlobalPos, scene)
+                let newGlobalPos = Vec2.round(Vec2.add(nodeOrigin, delta));
+                scene
+                    |> Scene.setGlobalPositionAt(nodePath, newGlobalPos)
+                    |> Scene.mapEngineNode(nodePath, engineNode ->
+                        Node2D.setPosition(Vec2.round(Node2D.getPosition(engineNode)),
+                                           engineNode))
             case _ => scene
         }
 
@@ -78,7 +84,7 @@ mod DragInput {
                 // 新しい topLeft offset は ratio 比率で伸縮する
                 let newOffset = scaleTopLeftOffset(origin#topLeftOffset,
                                                     origin#boxSize, newBox#size);
-                let newWorldPos = snapVec2(Vec2.sub(newBox#topLeft, newOffset));
+                let newWorldPos = Vec2.round(Vec2.sub(newBox#topLeft, newOffset));
                 if (List.isEmpty(origin#childSnapshots)) {
                     // 単独ノードのリサイズ。原始サイズ起点で ratio を掛ける
                     scene
@@ -99,7 +105,7 @@ mod DragInput {
                             |> Scene.mapEngineNode(childPath,
                                 EditableNode.applyResizeFromSnapshot(snap, ratio))
                             |> Scene.mapEngineNode(childPath,
-                                Node2D.setPosition(snapVec2(newChildLocal)))
+                                Node2D.setPosition(Vec2.round(newChildLocal)))
                     }, scene1, origin#childSnapshots)
                 }
             case _ => scene
@@ -131,9 +137,6 @@ mod DragInput {
                            newSize: Vec2.Vec2): Vec2.Vec2 =
         {x = originalOffset#x * safeRatio(newSize#x, originalSize#x),
          y = originalOffset#y * safeRatio(newSize#y, originalSize#y)}
-
-    pub def snapVec2(v: Vec2.Vec2): Vec2.Vec2 =
-        {x = Float64.round(v#x), y = Float64.round(v#y)}
 
     /// クリック押下時: 優先順位は 回転ノブ > リサイズハンドル > 編集対象ノード選択 / 移動。
     /// Shift を押しながらクリックすると、コンテナ優先ピックを切って z-index 最大の
@@ -303,7 +306,7 @@ mod DragInput {
                         case None => ()
                     };
                     let localPos = match Scene.getEngineNode(nodePath, scene) {
-                        case Some(engineNode) => Node2D.getPosition(engineNode)
+                        case Some(engineNode) => Vec2.round(Node2D.getPosition(engineNode))
                         case None => Vec2.zero()
                     };
                     SceneSerializer.updatePos(jsonPath, nodePath, localPos)

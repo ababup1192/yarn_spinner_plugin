@@ -78,8 +78,12 @@ mod KeyboardNudge {
         EditHistory.Rewind.save(EditHistory.Entry.MoveEntry({
             jsonPath = jsonPath, nodePath = nodePath,
             prevWorldPos = curGlobal}));
-        let newGlobal = Vec2.add(curGlobal, delta);
-        let newScene = Scene.setGlobalPositionAt(nodePath, newGlobal, scene);
+        let newGlobal = Vec2.round(Vec2.add(curGlobal, delta));
+        let newScene = scene
+            |> Scene.setGlobalPositionAt(nodePath, newGlobal)
+            |> Scene.mapEngineNode(nodePath, engineNode ->
+                Node2D.setPosition(Vec2.round(Node2D.getPosition(engineNode)),
+                                   engineNode));
         let localPos = match Scene.getEngineNode(nodePath, newScene) {
             case Some(engineNode) => Node2D.getPosition(engineNode)
             case None             => Vec2.zero()
