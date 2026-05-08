@@ -86,6 +86,7 @@ mod Game {
     def buildScene(fontAtlas: FontAtlas, boldFontAtlas: FontAtlas):
                     Scene[NodeTag] \ {GameEngine.Game, Fs.FileRead} =
         Scene.empty()
+            |> WorldScene.addWorldLayers
             |> DialogueScene.addDialogueLayer(fontAtlas, boldFontAtlas)
 
     // ════════════════════════════════════════════════════════════════════════

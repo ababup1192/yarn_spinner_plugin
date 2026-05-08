@@ -61,6 +61,7 @@ title: Room1
 -> とびらを あける
     <<jump DoorNode>>
 -> やすむ
+    <<bg room fade 0.5>>
     <<set $hp = $hp + 10>>
     <<if $hp > $max_hp>>
         <<set $hp = $max_hp>>

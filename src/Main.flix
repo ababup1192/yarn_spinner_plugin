@@ -7,7 +7,24 @@ def main(): Unit \ {IO, Chan, NonDet} =
             windowWidth     = Game.windowWi(),
             windowHeight    = Game.windowHi(),
             title           = "Yarn Spinner Plugin",
-            textureManifest = Nil,
+            // 背景・キャラのテクスチャ。論理名は story.yarn の <<bg ...>> / <<sprite ...>>
+            // 引数と 1:1 で揃える（例: <<bg dungeon ...>> → "bg_dungeon"）。
+            // 元素材は sprites/raw/ にあり、scripts/process-sprites.sh で
+            // ニアレスト縮小（背景は不透明、キャラは 4 隅 floodfill で背景透過）して
+            // sprites/<name>.png を生成する。
+            // ファイル名 char_gragon.png は素材のタイポだが、論理名 "char_dragon" で吸収。
+            textureManifest =
+                ({ name = "bg_title",    path = "sprites/bg_title.png",    hasAlpha = false }: GameEngine.TextureEntry)
+                :: ({ name = "bg_dungeon",  path = "sprites/bg_dungeon.png",  hasAlpha = false }: GameEngine.TextureEntry)
+                :: ({ name = "bg_room",     path = "sprites/bg_room.png",     hasAlpha = false }: GameEngine.TextureEntry)
+                :: ({ name = "bg_room1",    path = "sprites/bg_room1.png",    hasAlpha = false }: GameEngine.TextureEntry)
+                :: ({ name = "bg_boss",     path = "sprites/bg_boss.png",     hasAlpha = false }: GameEngine.TextureEntry)
+                :: ({ name = "bg_ending",   path = "sprites/bg_ending.png",   hasAlpha = false }: GameEngine.TextureEntry)
+                :: ({ name = "bg_gameover", path = "sprites/bg_gameover.png", hasAlpha = false }: GameEngine.TextureEntry)
+                :: ({ name = "char_ou",     path = "sprites/char_ou.png",     hasAlpha = true  }: GameEngine.TextureEntry)
+                :: ({ name = "char_chest",  path = "sprites/char_chest.png",  hasAlpha = true  }: GameEngine.TextureEntry)
+                :: ({ name = "char_dragon", path = "sprites/char_gragon.png", hasAlpha = true  }: GameEngine.TextureEntry)
+                :: Nil,
             // PixelMplus10 は 10px 設計のドットフォント。bake サイズも 10 に揃える。
             // [b] タグ用に Bold バリアントを並列登録し、RichTextLabel が文字単位で
             // 切り替える（DialogueScene が `default` と `default-bold` の両方を
