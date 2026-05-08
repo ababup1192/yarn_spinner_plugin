@@ -10,7 +10,7 @@ title: Start
 
 <<bgm play title loop>>
 <<bg title fade 0.5>>
-タイトル: 脱出 - 古城の鍵
+タイトル: [color=gold][b]脱出 - 古城の鍵[/b][/color]
 <<wait 0.8>>
 -> はじめから
     <<bgm fade 0.5>>
@@ -30,7 +30,7 @@ title: Intro
     <<set $player_name = "アレフ">>
 -> ベータ
     <<set $player_name = "ベータ">>
-おう: そうじゃ、{$player_name} じゃったな。
+おう: そうじゃ、[color=cyan]{$player_name}[/color] じゃったな。
 おう: おぬしは ゆうかんか？
 -> はい
     <<set $brave = true>>
@@ -65,7 +65,7 @@ title: Room1
     <<if $hp > $max_hp>>
         <<set $hp = $max_hp>>
     <<endif>>
-    ナレーション: HP が {$hp} に かいふくした。
+    ナレーション: HP が [color=lime]{$hp}[/color] に かいふくした。
     <<jump Room1>>
 ===
 
@@ -83,7 +83,7 @@ title: ChestNode
     <<set $chest_opened = true>>
     <<item add key>>
     <<set $inv_key = true>>
-    ナレーション: かぎを てに いれた。
+    ナレーション: [color=yellow]かぎ[/color] を てに いれた。
 <<endif>>
 <<sprite hide chest>>
 <<jump Room1>>
@@ -122,13 +122,13 @@ title: BattleLoop
 <<set $hp = $hp - 25>>
 <<se hit>>
 <<shake 0.4>>
-ナレーション: {$player_name} は {25} の ダメージ！ HP は {$hp} に なった。
+ナレーション: [color=cyan]{$player_name}[/color] は [color=red]{25}[/color] の ダメージ！ HP は [color=red]{$hp}[/color] に なった。
 <<if $hp <= 0>>
     <<jump GameOver>>
 <<endif>>
 -> こうげき
     <<if $brave>>
-        ナレーション: ゆうかんに きりつけた！ クリティカル！
+        ナレーション: ゆうかんに きりつけた！ [color=red][b]クリティカル！[/b][/color]
         ドラゴン: グ… やられた…
         <<return>>
     <<else>>
@@ -168,9 +168,9 @@ title: GameOver
 <<bg gameover fade 0.8>>
 <<bgm fade 0.5>>
 <<se die>>
-ナレーション: {$player_name} は たおれた。
+ナレーション: [color=cyan]{$player_name}[/color] は たおれた。
 <<wait 1.0>>
-ナレーション: GAME OVER
+ナレーション: [color=red][b]GAME OVER[/b][/color]
 <<phase Start>>
 <<stop>>
 ===

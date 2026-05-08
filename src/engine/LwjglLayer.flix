@@ -552,15 +552,15 @@ mod LwjglLayer {
         discard MemoryStack.stackPop();
         fontInfo.free();
 
-        // ベイク対象レンジ: ASCII (95) + 全角 ASCII (94) + ひらがな (96) + カタカナ (96) + 個別漢字
+        // ベイク対象レンジ: ASCII (95) + 全角 ASCII (94) + CJK 記号 + ひらがな (160) + カタカナ (96) + 個別漢字
         let kanji      = kanjiCodepoints();
         let kanjiCount = List.length(kanji);
         let rangesSpec: List[BakeRange] =
             { firstCp = 0x20,   count = 95,         cps = Nil   } ::    // ASCII 0x20-0x7E
             { firstCp = 0xFF01, count = 94,         cps = Nil   } ::    // 全角 ASCII（Ａ-Ｚ ａ-ｚ ！？等）U+FF01-U+FF5E
-            { firstCp = 0x3040, count = 96,         cps = Nil   } ::    // ひらがな
+            { firstCp = 0x3000, count = 160,        cps = Nil   } ::    // CJK 記号 (、。「」『』〜 等) + ひらがな U+3000-U+309F
             { firstCp = 0x30A0, count = 96,         cps = Nil   } ::    // カタカナ
-            { firstCp = 0,      count = kanjiCount, cps = kanji } ::    // 漢字（個別）
+            { firstCp = 0,      count = kanjiCount, cps = kanji } ::    // 漢字 + UI 記号（… ▼ 等の個別 cp）
             Nil;
         let numRanges = List.length(rangesSpec);
 

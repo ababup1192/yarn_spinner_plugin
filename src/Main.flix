@@ -8,10 +8,13 @@ def main(): Unit \ {IO, Chan, NonDet} =
             windowHeight    = Game.windowHi(),
             title           = "Yarn Spinner Plugin",
             textureManifest = Nil,
-            // BestTen-DOT は 16px 単位の dot 字形なので bake サイズも 16 に揃える。
-            // 12 など中途半端な値で bake するとグリフが崩れて滲んで見える。
+            // PixelMplus10 は 10px 設計のドットフォント。bake サイズも 10 に揃える。
+            // [b] タグ用に Bold バリアントを並列登録し、RichTextLabel が文字単位で
+            // 切り替える（DialogueScene が `default` と `default-bold` の両方を
+            // getFontAtlas して RichTextLabel に注入する）。
             fontManifest    =
-                ({ name = "default", path = "fonts/BestTen-DOT.otf", fontSize = 16.0 }: GameEngine.FontEntry)
+                ({ name = "default",      path = "fonts/PixelMplus10-Regular.ttf", fontSize = 10.0 }: GameEngine.FontEntry)
+                :: ({ name = "default-bold", path = "fonts/PixelMplus10-Bold.ttf",    fontSize = 10.0 }: GameEngine.FontEntry)
                 :: Nil,
             // talk: 行が出るたびに頭の 1〜2 秒（自然減衰まで）を流す効果音
             // tap : 確定キーで会話が進むタイミングの効果音

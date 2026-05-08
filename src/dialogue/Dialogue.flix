@@ -386,10 +386,14 @@ mod Dialogue {
                     |> Float64.tryToInt32
                     |> Option.getWithDefault(0)
                     |> Int32.max(0);
+            // 可視文字数ベースで slice する。`[color=red]` のタグ自体は 0 文字扱いで、
+            // 切り出した時点で開いている色タグは末尾で閉じられるため、typewriter の
+            // 途中フレームでも `[col` のような中途半端な表記が画面に出ない。
             let step = (acc, line) -> {
                 let (rendered, remaining) = acc;
-                let take = Int32.min(remaining, String.length(line));
-                let visible = String.take(Int32.max(0, take), line);
+                let visibleLen = Markup.BBCode.visibleLength(line);
+                let take = Int32.min(remaining, visibleLen);
+                let visible = Markup.BBCode.sliceVisible(line, Int32.max(0, take));
                 (List.append(rendered, visible :: Nil), remaining - take)
             };
             let (linesOut, _) =
@@ -511,19 +515,37 @@ mod Dialogue {
     pub def withDialog(yarnProject: Yarn.Types.YarnProject,
                         body: Unit -> a \ ef):
                          a \ (ef - Session - DialogueView - CommandRegistry
-                                 - Dialogue.SceneView.Inbox) =
+                                 - Yarn.VariableAccess
+                                 - Dialogue.SceneView.Inbox
+                                 - Dialogue.SceneView.CommandInbox) =
         region rc {
             run body() with Dialogue.Runner.withRunner(rc, yarnProject)
-                       with Dialogue.Commands.withWaitOnly
+                       with Dialogue.Commands.withAsyncOnly
                        with Dialogue.SceneView.withSceneView(rc)
         }
 }
 
 mod Dialogue.Commands {
 
-    /// `wait` を含むあらゆるコマンドを「即時完了」として扱うスタブ。
-    /// 常に `true`（同期完了）を返すので、ランナーがそのまま次の命令へ進む。
-    /// 実エンジン統合時は Tween.Scheduler 経由の真の待機に差し替える。
+    /// すべてのコマンドを「非同期完了」として扱う handler（本番用）。
+    /// dispatch は常に false を返すので、ランナーは外部からの
+    /// `Session.submitCommandDone` を待機する。
+    ///
+    /// 実コマンド処理は Inbox 経由で gameLoop 側 (`Game.CommandRouter.processCommands`)
+    /// に委ねる。`SceneView` の `runCommand` ハンドラが `ViewEvent.Command(text)` を
+    /// 既にキューに積んでいるので、CommandRegistry には登録機構を持たせず常に async で
+    /// 受け流す（register は no-op）。
+    pub def withAsyncOnly(body: Unit -> a \ ef):
+                           a \ (ef - Dialogue.CommandRegistry) =
+        run body() with handler Dialogue.CommandRegistry {
+            def register(_name, _action, resume) = resume()
+            def dispatch(_commandLine, resume)   = resume(false)
+        }
+
+    /// すべてのコマンドを「即時同期完了」として扱う handler（テスト用）。
+    /// テストで gameLoop を回さず DialogueRunner を直接駆動する場合、async にすると
+    /// VM がコマンドで永久停止してしまうため、dispatch を true 固定にして
+    /// runner が自分で次の命令へ進めるようにする。
     pub def withWaitOnly(body: Unit -> a \ ef):
                           a \ (ef - Dialogue.CommandRegistry) =
         run body() with handler Dialogue.CommandRegistry {

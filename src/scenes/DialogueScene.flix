@@ -37,6 +37,9 @@ mod DialogueScene {
     /// 本パネルが使うフォントの論理名（Main.flix の fontManifest と一致）。
     pub def fontName(): String = "default"
 
+    /// `[b]...[/b]` 用の太字フォントの論理名（Main.flix の fontManifest と一致）。
+    pub def boldFontName(): String = "default-bold"
+
     // ── レイアウト数値（design 単位 px、解像度 320×240 を想定）──
     //
     // ノードの配置・サイズ・色などの構築時の値は scene.json 側に固定値として持つ。
@@ -72,12 +75,25 @@ mod DialogueScene {
     /// `NodeTag.Dialogue(emptyState(jrpgProfile))` を注入する（visible=false）。
     /// scene.json のレイアウトが JRPG 風 3 行パネル前提なので profile も JRPG 固定で良い。
     pub def addDialogueLayer(fontAtlas: FontAtlas,
+                              boldFontAtlas: FontAtlas,
                               scene: Scene[NodeTag]):
                               Scene[NodeTag] \ {GameEngine.Game, Fs.FileRead} =
         SceneLoader.loadSceneWithFont(sceneJsonPath(), fontAtlas,
             SceneLoader.constTagParser(NodeTag.NoTag), scene)
             |> Scene.setState(layerPath(),
                 NodeTag.Dialogue(Dialogue.emptyState(Dialogue.jrpgProfile())))
+            |> applyBoldFontAtlas(bodyPath(), boldFontAtlas)
+            |> applyBoldFontAtlas(transitionPath(), boldFontAtlas)
+
+    /// 指定したパスの RichTextLabel に `[b]` 用 bold アトラスをセットする。
+    /// scene.json は単一フォントしか持てないので、ロード後の後付け注入で対応する。
+    def applyBoldFontAtlas(path: NodePath, boldFontAtlas: FontAtlas,
+                            scene: Scene[NodeTag]): Scene[NodeTag] =
+        Scene.mapEngineNode(path, engineNode ->
+            EngineNode.mapRichTextLabel(label ->
+                RichTextLabel.setBoldFontAtlas(boldFontAtlas, label),
+                engineNode),
+            scene)
 
     // ════════════════════════════════════════════════════════════════════════
     // (D) ロジック — 入力ディスパッチと process
@@ -177,10 +193,13 @@ mod DialogueScene {
             }, scene)
 
     /// 本文 RichTextLabel のテキストを最新状態から同期する。
+    /// `formatBody` で typewriter slice したあとに `Yarn.Markup.toBBCode` を当てる
+    /// （順序を逆にすると `[color=red]` のタグ文字数まで progress に入って表示が崩れる）。
     def updateBody(state: UIState, scene: Scene[NodeTag]): Scene[NodeTag] =
+        let body = Dialogue.formatBody(state) |> Yarn.Markup.toBBCode;
         Scene.mapEngineNode(bodyPath(), engineNode ->
             EngineNode.mapRichTextLabel(label ->
-                RichTextLabel.setText(Dialogue.formatBody(state), label),
+                RichTextLabel.setText(body, label),
                 engineNode),
             scene)
 
@@ -222,7 +241,7 @@ mod DialogueScene {
                     if (scrollY >= exitScroll) ""
                     else line
                 }, transition#oldLines);
-                let text = String.intercalate("\n", displayLines);
+                let text = String.intercalate("\n", displayLines) |> Yarn.Markup.toBBCode;
                 let position: Vec2.Vec2 = {
                     x = bodyOrigin#x,
                     y = bodyOrigin#y - scrollY

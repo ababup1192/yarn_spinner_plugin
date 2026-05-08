@@ -12,6 +12,8 @@
 /// 上流で別途 handler を積んでおく必要がある。
 mod Dialogue.Runner {
     use Yarn.Types.YarnProject
+    use Yarn.Types.Value
+    use Yarn.Types.Value.{BoolV}
     use Yarn.VM.{StepResult}
     use Yarn.VM.StepResult.{Running, WaitingLine, WaitingOptions, WaitingCommand,
                              NodeComplete, DialogueComplete, Failed}
@@ -25,10 +27,31 @@ mod Dialogue.Runner {
     /// 呼び出し元は `region rc { withRunner(rc, compiledProject, () -> ...) ... }` で使う。
     /// body の中で `do Session.start("Start")` などが呼べるようになる。
     pub def withRunner(rc: Region[r], compiledProject: YarnProject, body: Unit -> a \ ef):
-                        a \ (ef - Dialogue.Session) + Dialogue.DialogueView
-                          + Dialogue.CommandRegistry + r =
+                        a \ (ef - Dialogue.Session - Yarn.VariableAccess)
+                          + Dialogue.DialogueView + Dialogue.CommandRegistry + r =
         let vmRef: Ref[Option[Yarn.VM.VM[r]], r] = Ref.fresh(rc, None);
-        run body() with handler Dialogue.Session {
+        run body() with handler Yarn.VariableAccess {
+
+            def setBool(name, value, resume) = {
+                match Ref.get(vmRef) {
+                    case Some(vm) => Yarn.VariableStorage.set(name, BoolV(value), vm#variables)
+                    case None     => ()
+                };
+                resume()
+            }
+
+            def getBool(name, resume) = {
+                let result = match Ref.get(vmRef) {
+                    case Some(vm) =>
+                        match Yarn.VariableStorage.get(name, vm#variables) {
+                            case Some(BoolV(b)) => Some(b)
+                            case _              => None
+                        }
+                    case None => None
+                };
+                resume(result)
+            }
+        } with handler Dialogue.Session {
 
             def start(nodeName, resume) = {
                 let vm = Yarn.VM.init(rc, compiledProject, nodeName);

@@ -81,10 +81,12 @@ mod Game {
 
     /// 対話レイヤを 1 枚積んだ初期シーンを構築する。
     /// `addDialogueLayer` 自身が `DialogueScene.scene.json` を読みに行くので Fs.FileRead が必要。
-    /// `fontAtlas` は `start` で事前取得して渡す（ホットリロード時の再構築でも再利用）。
-    def buildScene(fontAtlas: FontAtlas): Scene[NodeTag] \ {GameEngine.Game, Fs.FileRead} =
+    /// `fontAtlas` / `boldFontAtlas` は `start` で事前取得して渡す
+    /// （ホットリロード時の再構築でも再利用）。bold は `[b]...[/b]` 用。
+    def buildScene(fontAtlas: FontAtlas, boldFontAtlas: FontAtlas):
+                    Scene[NodeTag] \ {GameEngine.Game, Fs.FileRead} =
         Scene.empty()
-            |> DialogueScene.addDialogueLayer(fontAtlas)
+            |> DialogueScene.addDialogueLayer(fontAtlas, boldFontAtlas)
 
     // ════════════════════════════════════════════════════════════════════════
     // start / gameLoop
@@ -92,19 +94,22 @@ mod Game {
 
     /// ゲーム起動エントリ。`$hp` 等の変数初期値は yarn の `<<declare>>` に従う。
     ///
-    /// 対話関連の handler 連結（Runner / WaitOnly / SceneView+Inbox）は
+    /// 対話関連の handler 連結（Runner / AsyncOnly / SceneView+Inbox+CommandInbox）は
     /// `Dialogue.withDialog` に閉じ込めてあり、region / event queue は外には漏れない。
     /// `Editor.withState(rc)` で F1 トグル + ホットリロード監視 + EditHistory(undo) を注入する。
+    /// `<<wait>>` 用の WaitQueue も region rc に確保し、毎フレームの gameLoop に渡す。
     pub def start():
             Unit \ {GameEngine.Game, GameEngine.Audio, Fs.FileRead, Fs.FileWrite,
                     Fs.Glob, Fs.ModificationTime, IO, Chan, NonDet} =
         // 注意: Flix では `project` は予約語のため変数名に使えない。
         let yarnProject = loadProject();
         let fontAtlas = GameEngine.Game.getFontAtlas(DialogueScene.fontName());
+        let boldFontAtlas = GameEngine.Game.getFontAtlas(DialogueScene.boldFontName());
         region rc {
+            let waitQueue = Game.CommandWaitQueue.empty(rc);
             run {
                 Dialogue.Session.start("Start");
-                gameLoop(fontAtlas, buildScene(fontAtlas))
+                gameLoop(fontAtlas, boldFontAtlas, waitQueue, buildScene(fontAtlas, boldFontAtlas))
             } with Editor.withState(rc)
               with Dialogue.withDialog(yarnProject)
         }
@@ -112,14 +117,20 @@ mod Game {
     /// メインループ（7 段パイプライン）。
     ///   (1) F1 トグル + マウス選択 / ドラッグ / リサイズ / 矢印 nudge / Cmd+Z（エディタ入力を最優先）
     ///   (2) エディタ ON ならゲーム更新スキップ
-    ///   (3) ホットリロード判定（scene.json 変更 → 全再構築）
-    ///   (4) エディタオーバーレイ → 描画
-    ///   (5) 末尾再帰
-    def gameLoop(fontAtlas: FontAtlas, scene: Scene[NodeTag]):
+    ///   (3) Yarn コマンド処理（音再生・wait カウントダウン・フラグ書き込み）
+    ///   (4) ホットリロード判定（scene.json 変更 → 全再構築）
+    ///   (5) エディタオーバーレイ → 描画
+    ///   (6) 末尾再帰
+    def gameLoop(fontAtlas: FontAtlas,
+                  boldFontAtlas: FontAtlas,
+                  waitQueue: Game.CommandWaitQueue.WaitQueue[r],
+                  scene: Scene[NodeTag]):
                   Unit \ {GameEngine.Game, GameEngine.Audio, Dialogue.Session,
-                          Dialogue.SceneView.Inbox, Editor.EditorState,
+                          Dialogue.SceneView.Inbox, Dialogue.SceneView.CommandInbox,
+                          Yarn.VariableAccess,
+                          Editor.EditorState,
                           EditHistory.Rewind, Fs.FileRead, Fs.FileWrite,
-                          IO, Chan, NonDet} =
+                          IO, Chan, NonDet, r} =
         if (GameEngine.Game.shouldClose()
             or GameEngine.Game.isKeyPressed(GameEngine.Key.Escape)) ()
         else {
@@ -127,26 +138,34 @@ mod Game {
             // (1) エディタ入力を最優先
             let afterEditor = Editor.handleInput(scene);
             // (2) エディタ ON ならゲーム更新スキップ
+            //     コマンド処理（CommandRouter）はエディタ ON 中も走らせる。
+            //     wait のカウントダウンは外部時計で進めるため、エディタで止まると VM が
+            //     永久に動かなくなって不便なので。
             let updated =
                 if (Editor.isOn()) afterEditor
                 else afterEditor
                     |> GameEngine.handleInput
                     |> GameEngine.process(delta = dt, paused = false);
-            // (3) ホットリロード判定。再構築時は対話の進行状態（UIState）を維持し、
+            // (3) Yarn コマンド処理。`runCommand` で別キュー化された command 文字列を
+            // すべて取り出し、音再生 / 変数書き込み / wait 登録 / fallback ログに振り分ける。
+            // wait 完了時は CommandRouter 内で `submitCommandDone` を発火する。
+            let afterCommands =
+                Game.CommandRouter.processCommands(waitQueue, delta = dt, updated);
+            // (4) ホットリロード判定。再構築時は対話の進行状態（UIState）を維持し、
             // 表示ノード（Body / Transition / Indicator / layer の visible）も
             // 旧状態から再同期する。エディタ ON 中は `process` が走らないので、
             // ここで `syncDisplay` を呼んでおかないと Body の text が空文字
             // （scene.json のデフォルト）のままになって会話が消えて見える。
             let next =
                 if (Editor.pollReload()) {
-                    let preservedState = DialogueScene.getState(updated);
-                    buildScene(fontAtlas)
+                    let preservedState = DialogueScene.getState(afterCommands);
+                    buildScene(fontAtlas, boldFontAtlas)
                         |> DialogueScene.mapState(_ -> preservedState)
                         |> DialogueScene.syncDisplay(preservedState)
                 }
-                else updated;
-            // (4) エディタオーバーレイ → 描画
+                else afterCommands;
+            // (5) エディタオーバーレイ → 描画
             GameEngine.render(Editor.applyOverlay(fontAtlas, next));
-            gameLoop(fontAtlas, next)
+            gameLoop(fontAtlas, boldFontAtlas, waitQueue, next)
         }
 }
