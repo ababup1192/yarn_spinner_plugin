@@ -8,6 +8,7 @@ title: Start
 <<declare $inv_torch = false as bool>>
 <<declare $chest_opened = false as bool>>
 <<declare $_load_failed = false as bool>>
+<<declare $_loaded_at_meet_king = false as bool>>
 
 <<bgm play title loop>>
 <<bg title fade 0.5>>
@@ -160,14 +161,22 @@ title: MeetKing
 <<bg dungeon fade 0.3>>
 <<bgm play dungeon loop>>
 <<sprite show ou center>>
-おう: おお、{$player_name}よ。
-おう: たびの きろくを のこすか？
--> セーブする
-    <<save 1>>
-    ナレーション: (セーブしました)
-    おう: きを つけて いくのじゃ。
--> やめておく
-    おう: …よかろう。
+<<if $_loaded_at_meet_king>>
+    <<set $_loaded_at_meet_king = false>>
+    おう: おお、{$player_name}よ。よくぞ もどった。
+    おう: たびを つづけるのじゃ。
+<<else>>
+    おう: おお、{$player_name}よ。
+    おう: たびの きろくを のこすか？
+    -> セーブする
+        <<set $_loaded_at_meet_king = true>>
+        <<save 1>>
+        <<set $_loaded_at_meet_king = false>>
+        ナレーション: (セーブしました)
+        おう: きを つけて いくのじゃ。
+    -> やめておく
+        おう: …よかろう。
+<<endif>>
 <<sprite hide ou>>
 <<jump Room1>>
 ===

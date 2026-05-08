@@ -553,4 +553,34 @@ mod TestStoryScenario {
         Assert.assertEq(
             expected = true,
             containsCommand("sprite show ou center", events))
+
+    /// `<<load>>` 後は変数 `$_loaded_at_meet_king=true` が復元された状態で
+    /// MeetKing に再入する。このときは「おかえり」分岐に入り、save ダイアログを
+    /// 出さずにそのまま部屋を出る（`save 1` は発火せず、`sprite hide ou` で退出）。
+    @Test
+    def testMeetKingAfterLoadExitsWithoutSavePrompt(): Unit \ {Assert, IO} =
+        let loaded = TestStoryFixture.loadProject();
+        let events = region rc {
+            let vm = Yarn.VM.init(rc, loaded, "MeetKing");
+            Yarn.VariableStorage.set("\$_loaded_at_meet_king", BoolV(true), vm#variables);
+            // 選択肢が出ない経路なので index 列なし。Room1 復帰後 やすむ(2) で打ち切り。
+            runScenario(vm, 2 :: Nil, 300)
+        };
+        Assert.assertEq(
+            expected = (false, true),
+            (containsCommand("save 1", events),
+             containsCommand("sprite hide ou", events)))
+
+    /// 「おかえり」経路を抜けたあとは `$_loaded_at_meet_king` が false に戻る。
+    /// （再びこの部屋を訪れた場合は通常通り save ダイアログが出る）
+    @Test
+    def testMeetKingAfterLoadResetsLoadedFlag(): Unit \ {Assert, IO} =
+        let flagAfter = region rc {
+            let loaded = TestStoryFixture.loadProject();
+            let vm = Yarn.VM.init(rc, loaded, "MeetKing");
+            Yarn.VariableStorage.set("\$_loaded_at_meet_king", BoolV(true), vm#variables);
+            discard runScenario(vm, 2 :: Nil, 300);
+            Yarn.VariableStorage.get("\$_loaded_at_meet_king", vm#variables)
+        };
+        Assert.assertEq(expected = Some(BoolV(false)), flagAfter)
 }
