@@ -221,6 +221,21 @@ mod TestStoryScenario {
             expected = (true, true, true, true),
             (hasGameOverBg, hasGameOverLine, hasPhaseCommand, endedWithDone))
 
+    /// GameOver 遷移時にドラゴンスプライトを隠さないと、その後タイトルに戻った
+    /// あともドラゴンが残り続ける。Battle → BattleLoop → 死亡 → GameOver 経路で
+    /// `sprite hide dragon` が発火することを確認する。
+    /// （ユーザー報告: 「ドラゴンのスプライトがゲームオーバー後も表示され続けています」）
+    @Test
+    def testGameOverHidesDragonSprite(): Unit \ {Assert, IO} =
+        let loaded = TestStoryFixture.loadProject();
+        let events = region rc {
+            let vm = Yarn.VM.init(rc, loaded, "Battle");
+            runScenario(vm, 0 :: 0 :: 0 :: Nil, 1500)
+        };
+        Assert.assertEq(
+            expected = true,
+            containsCommand("sprite hide dragon", events))
+
     // ════════════════════════════════════════════════════════════════════════
     // (E) Room1 やすむ で bg_room と HP 回復
     // ════════════════════════════════════════════════════════════════════════

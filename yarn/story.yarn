@@ -167,6 +167,7 @@ title: Ending
 
 title: GameOver
 ---
+<<sprite hide dragon>>
 <<bg gameover fade 0.8>>
 <<bgm fade 0.5>>
 <<se die>>
