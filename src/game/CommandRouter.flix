@@ -15,10 +15,17 @@
 mod Game.CommandRouter {
     use Duration.Duration
 
+    /// `<<shake <sec>>>` の最大オフセット（design px）。design 320×240 に対して
+    /// 4px ぶれる程度が「ガクッ」と感じる範囲。引数で可変にしたくなったら 2 引数目を
+    /// パースする形に拡張する。
+    def shakeIntensity(): Float64 = 4.0
+
     /// `Dialogue.SceneView.CommandInbox` から溜まったコマンドをすべて取り出して dispatch し、
     /// `WaitQueue` を `delta` だけ進めて期限切れ件数ぶん `submitCommandDone` を発火する。
     /// `bg` / `sprite` 系コマンドは `scene` を畳み込んでいくため、最終的な scene を返す。
     pub def processCommands(waitQueue: Game.CommandWaitQueue.WaitQueue[r],
+                              shakeState: Game.ShakeState.State[r],
+                              audioFader: Game.AudioFader.State[r],
                               delta: {delta = Duration},
                               scene: Scene[NodeTag]):
                               Scene[NodeTag] \ {
@@ -31,7 +38,8 @@ mod Game.CommandRouter {
                               } =
         let pending = Dialogue.SceneView.CommandInbox.takeAllCommands();
         let afterDispatch =
-            List.foldLeft((sc, text) -> dispatchOne(text, waitQueue, sc),
+            List.foldLeft((sc, text) ->
+                dispatchOne(text, waitQueue, shakeState, audioFader, sc),
                 scene, pending);
         let expired = Game.CommandWaitQueue.tick(delta#delta, waitQueue);
         completeMany(expired);
@@ -43,6 +51,8 @@ mod Game.CommandRouter {
     /// シーンを変えるコマンドは新しい scene を返し、それ以外は受け取った scene をそのまま返す。
     def dispatchOne(text: String,
                      waitQueue: Game.CommandWaitQueue.WaitQueue[r],
+                     shakeState: Game.ShakeState.State[r],
+                     audioFader: Game.AudioFader.State[r],
                      scene: Scene[NodeTag]):
                      Scene[NodeTag] \ {
                        GameEngine.Audio, Dialogue.Session, Yarn.VariableAccess, IO, r
@@ -50,12 +60,24 @@ mod Game.CommandRouter {
         let (name, args) = Dialogue.CommandParser.parse(text);
         match (name, args) {
             // 音響: bgm play <name> [loop]
+            // AudioFader に名前を登録して音量を 1.0 にリセット（前回の fade-out で
+            // gain が 0 のまま残るのを防ぐ）。`alSourcePlay` 自体は playAudio で発火。
             case ("bgm", "play" :: assetName :: _) =>
+                Game.AudioFader.setBgm(assetName, audioFader);
                 GameEngine.Audio.playAudio(assetName);
                 Dialogue.Session.submitCommandDone();
                 scene
-            // 音響: bgm fade <sec> — フェード未実装なので当面は素通し
-            case ("bgm", "fade" :: _) =>
+            // 音響: bgm fade <sec>
+            // 現在 BGM の音量を 1.0 → 0.0 にフェード。AudioFader が毎フレーム
+            // setVolume を発火し、完了時に stopAudio する。
+            case ("bgm", "fade" :: secStr :: _) =>
+                match Float64.fromString(secStr) {
+                    case Some(seconds) =>
+                        Game.AudioFader.fadeOutCurrent(
+                            Duration.seconds(seconds), audioFader)
+                    case None =>
+                        println("[CommandRouter] invalid bgm fade seconds: ${secStr}")
+                };
                 Dialogue.Session.submitCommandDone();
                 scene
             // 音響: se <name>
@@ -109,6 +131,18 @@ mod Game.CommandRouter {
                 let next = WorldScene.hideCharacter(spriteName, scene);
                 Dialogue.Session.submitCommandDone();
                 next
+            // 画面ゆれ: shake <sec> — 強度は固定（design 単位 4px ぶん）。
+            // ShakeState に積むだけで毎フレームの tickAndApply が描画に反映する。
+            case ("shake", secStr :: _) =>
+                match Float64.fromString(secStr) {
+                    case Some(seconds) =>
+                        Game.ShakeState.start(
+                            Duration.seconds(seconds), shakeIntensity(), shakeState)
+                    case None =>
+                        println("[CommandRouter] invalid shake seconds: ${secStr}")
+                };
+                Dialogue.Session.submitCommandDone();
+                scene
             // 空文字（理論上は来ない）
             case ("", _) =>
                 Dialogue.Session.submitCommandDone();

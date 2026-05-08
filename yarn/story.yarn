@@ -139,7 +139,8 @@ title: BattleLoop
 -> にげる
     <<if $hp > 50>>
         ナレーション: たいりょく が ある うちに にげきった。
-        <<return>>
+        <<sprite hide dragon>>
+        <<jump Room1>>
     <<else>>
         ナレーション: にげきれない！
         <<jump BattleLoop>>

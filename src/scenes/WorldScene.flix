@@ -121,4 +121,16 @@ mod WorldScene {
             EngineNode.mapSprite2D(sprite -> CanvasItem.setVisible(false, sprite),
                 engineNode),
             scene)
+
+    /// 背景／キャラレイヤの CanvasLayer position に shake オフセットを書き込む。
+    /// `<<shake>>` の毎フレーム適用用で、対話レイヤ（drawLayer=10）には影響させない
+    /// （UI は安定したまま、ワールドだけが揺れる流儀）。
+    pub def setShakeOffset(offset: Vec2.Vec2, scene: Scene[NodeTag]): Scene[NodeTag] =
+        scene
+            |> Scene.mapEngineNode(backgroundLayerName() :: Nil, layer ->
+                EngineNode.mapCanvasLayer(cl -> CanvasLayer.setOffset(offset, cl),
+                    layer))
+            |> Scene.mapEngineNode(charactersLayerName() :: Nil, layer ->
+                EngineNode.mapCanvasLayer(cl -> CanvasLayer.setOffset(offset, cl),
+                    layer))
 }

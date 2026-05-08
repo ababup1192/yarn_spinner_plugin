@@ -857,6 +857,13 @@ mod LwjglLayer {
                 };
                 k(())
             }
+            def setVolume(name, volume, k) = {
+                match Map.get(name, audioRegistry) {
+                    case Some(src) => AL10.alSourcef(src, AL10.AL_GAIN, volume)
+                    case None      => ()
+                };
+                k(())
+            }
         } with handler GameEngine.Game {
             def renderCommands(sprites, tileMaps, k) = {
                 Array.put((sprites, tileMaps), 0, renderStateHolder);

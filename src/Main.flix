@@ -35,9 +35,27 @@ def main(): Unit \ {IO, Chan, NonDet} =
                 :: Nil,
             // talk: 行が出るたびに頭の 1〜2 秒（自然減衰まで）を流す効果音
             // tap : 確定キーで会話が進むタイミングの効果音
+            // BGM: title / dungeon / room / battle / ending — story.yarn の
+            //   <<bgm play <name> loop>> で論理名から引く。looping=true で
+            //   OpenAL の AL_LOOPING に乗せて seamless loop。
+            // SE chest_open: 宝箱を開けるとき。論理名は story 準拠で
+            //   ファイル名 (chest.wav) と異なる。
             soundManifest   =
-                ({ name = "talk", path = "audio/talk.ogg", looping = false }: GameEngine.AudioEntry)
-                :: ({ name = "tap",  path = "audio/tap.ogg",  looping = false }: GameEngine.AudioEntry)
+                ({ name = "talk",       path = "audio/talk.ogg",    looping = false }: GameEngine.AudioEntry)
+                :: ({ name = "tap",        path = "audio/tap.ogg",     looping = false }: GameEngine.AudioEntry)
+                :: ({ name = "title",      path = "audio/title.ogg",   looping = true  }: GameEngine.AudioEntry)
+                :: ({ name = "dungeon",    path = "audio/dungeon.ogg", looping = true  }: GameEngine.AudioEntry)
+                :: ({ name = "room",       path = "audio/room.ogg",    looping = true  }: GameEngine.AudioEntry)
+                :: ({ name = "battle",     path = "audio/battle.ogg",  looping = true  }: GameEngine.AudioEntry)
+                :: ({ name = "ending",     path = "audio/ending.ogg",  looping = true  }: GameEngine.AudioEntry)
+                :: ({ name = "chest_open", path = "audio/chest.wav",     looping = false }: GameEngine.AudioEntry)
+                // 以下 4 SE は Kenney.nl の RPG Audio パック (CC0) から流用。
+                // door_open: doorOpen_1.ogg / locked: metalLatch.ogg
+                // hit: knifeSlice.ogg / die: chop.ogg
+                :: ({ name = "door_open",  path = "audio/door_open.ogg", looping = false }: GameEngine.AudioEntry)
+                :: ({ name = "locked",     path = "audio/locked.ogg",    looping = false }: GameEngine.AudioEntry)
+                :: ({ name = "hit",        path = "audio/hit.ogg",       looping = false }: GameEngine.AudioEntry)
+                :: ({ name = "die",        path = "audio/die.ogg",       looping = false }: GameEngine.AudioEntry)
                 :: Nil,
             clearColor      = {r = 0.1f32, g = 0.1f32, b = 0.15f32},
             maxDeltaTime    = 0.05

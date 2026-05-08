@@ -101,16 +101,20 @@ mod Game {
     /// `<<wait>>` 用の WaitQueue も region rc に確保し、毎フレームの gameLoop に渡す。
     pub def start():
             Unit \ {GameEngine.Game, GameEngine.Audio, Fs.FileRead, Fs.FileWrite,
-                    Fs.Glob, Fs.ModificationTime, IO, Chan, NonDet} =
+                    Fs.Glob, Fs.ModificationTime, Math.Random,
+                    IO, Chan, NonDet} =
         // 注意: Flix では `project` は予約語のため変数名に使えない。
         let yarnProject = loadProject();
         let fontAtlas = GameEngine.Game.getFontAtlas(DialogueScene.fontName());
         let boldFontAtlas = GameEngine.Game.getFontAtlas(DialogueScene.boldFontName());
         region rc {
             let waitQueue = Game.CommandWaitQueue.empty(rc);
+            let shakeState = Game.ShakeState.empty(rc);
+            let audioFader = Game.AudioFader.empty(rc);
             run {
                 Dialogue.Session.start("Start");
-                gameLoop(fontAtlas, boldFontAtlas, waitQueue, buildScene(fontAtlas, boldFontAtlas))
+                gameLoop(fontAtlas, boldFontAtlas, waitQueue, shakeState, audioFader,
+                          buildScene(fontAtlas, boldFontAtlas))
             } with Editor.withState(rc)
               with Dialogue.withDialog(yarnProject)
         }
@@ -125,12 +129,15 @@ mod Game {
     def gameLoop(fontAtlas: FontAtlas,
                   boldFontAtlas: FontAtlas,
                   waitQueue: Game.CommandWaitQueue.WaitQueue[r],
+                  shakeState: Game.ShakeState.State[r],
+                  audioFader: Game.AudioFader.State[r],
                   scene: Scene[NodeTag]):
                   Unit \ {GameEngine.Game, GameEngine.Audio, Dialogue.Session,
                           Dialogue.SceneView.Inbox, Dialogue.SceneView.CommandInbox,
                           Yarn.VariableAccess,
                           Editor.EditorState,
                           EditHistory.Rewind, Fs.FileRead, Fs.FileWrite,
+                          Math.Random,
                           IO, Chan, NonDet, r} =
         if (GameEngine.Game.shouldClose()
             or GameEngine.Game.isKeyPressed(GameEngine.Key.Escape)) ()
@@ -151,7 +158,13 @@ mod Game {
             // すべて取り出し、音再生 / 変数書き込み / wait 登録 / fallback ログに振り分ける。
             // wait 完了時は CommandRouter 内で `submitCommandDone` を発火する。
             let afterCommands =
-                Game.CommandRouter.processCommands(waitQueue, delta = dt, updated);
+                Game.CommandRouter.processCommands(waitQueue, shakeState, audioFader,
+                    delta = dt, updated);
+            // (3.5) 画面ゆれ。アクティブなら毎フレーム ±intensity のランダムオフセットを
+            // World レイヤに注入する。期限切れになったタイミングで (0,0) に戻す。
+            let afterShake = Game.ShakeState.tickAndApply(dt, shakeState, afterCommands);
+            // (3.6) BGM フェード進行。fade 中なら毎フレーム setVolume、完了で stopAudio。
+            Game.AudioFader.tick(dt, audioFader);
             // (4) ホットリロード判定。再構築時は対話の進行状態（UIState）を維持し、
             // 表示ノード（Body / Transition / Indicator / layer の visible）も
             // 旧状態から再同期する。エディタ ON 中は `process` が走らないので、
@@ -159,14 +172,14 @@ mod Game {
             // （scene.json のデフォルト）のままになって会話が消えて見える。
             let next =
                 if (Editor.pollReload()) {
-                    let preservedState = DialogueScene.getState(afterCommands);
+                    let preservedState = DialogueScene.getState(afterShake);
                     buildScene(fontAtlas, boldFontAtlas)
                         |> DialogueScene.mapState(_ -> preservedState)
                         |> DialogueScene.syncDisplay(preservedState)
                 }
-                else afterCommands;
+                else afterShake;
             // (5) エディタオーバーレイ → 描画
             GameEngine.render(Editor.applyOverlay(fontAtlas, next));
-            gameLoop(fontAtlas, boldFontAtlas, waitQueue, next)
+            gameLoop(fontAtlas, boldFontAtlas, waitQueue, shakeState, audioFader, next)
         }
 }

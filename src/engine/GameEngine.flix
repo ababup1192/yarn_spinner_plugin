@@ -178,12 +178,14 @@ mod GameEngine {
         def setCursor(cursor: Cursor): Unit
     }
 
-    /// オーディオエフェクト: サウンドの再生・停止
+    /// オーディオエフェクト: サウンドの再生・停止・音量
     pub eff Audio {
         /// 指定した名前のサウンドを先頭から再生する
         def playAudio(name: String): Unit
         /// 指定した名前のサウンドを停止する
         def stopAudio(name: String): Unit
+        /// 指定した名前のサウンドの音量（gain）を 0.0〜1.0 で設定する
+        def setVolume(name: String, volume: Float32): Unit
     }
 
     // ========================================================================
