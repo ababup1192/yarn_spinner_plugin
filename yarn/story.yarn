@@ -74,6 +74,8 @@ title: Room1
     <<endif>>
     ナレーション: HP が [color=lime]{$hp}[/color] に かいふくした。
     <<jump Room1>>
+-> 王に あいに いく
+    <<jump MeetKing>>
 ===
 
 title: ChestNode
@@ -151,6 +153,23 @@ title: BattleLoop
         ナレーション: にげきれない！
         <<jump BattleLoop>>
     <<endif>>
+===
+
+title: MeetKing
+---
+<<bg dungeon fade 0.3>>
+<<bgm play dungeon loop>>
+<<sprite show ou center>>
+おう: おお、{$player_name}よ。
+おう: たびの きろくを のこすか？
+-> セーブする
+    <<save 1>>
+    ナレーション: (セーブしました)
+    おう: きを つけて いくのじゃ。
+-> やめておく
+    おう: …よかろう。
+<<sprite hide ou>>
+<<jump Room1>>
 ===
 
 title: Ending
