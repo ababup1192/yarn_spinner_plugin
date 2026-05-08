@@ -2,7 +2,7 @@
 ///
 /// Phase A: VM 抽象拡張（VariableStorage.toMap / VariableAccess.snapshot /
 ///   Session.restart）の動作確認。
-/// Phase B: Game.SaveManager の write / read のラウンドトリップとファイル形式。
+/// Phase B: SaveManager の write / read のラウンドトリップとファイル形式。
 /// CommandRouter 配線は Phase C で別途。
 ///
 /// ディスク I/O テストはスロット 999 を専用に使い、各テスト冒頭で
@@ -10,7 +10,7 @@
 mod TestSaveLoad {
     use Yarn.Types.{YarnProject, Value}
     use Yarn.Types.Value.{BoolV, FloatV, StringV}
-    use Game.SaveManager.SaveData
+    use Game.SaveData.SaveData
 
     /// テスト用の固定スロット番号。本番のスロット 1 と衝突させない。
     def testSlot(): Int32 = 999
@@ -100,13 +100,13 @@ mod TestSaveLoad {
         Assert.assertEq(expected = (true, true), (hasRestoredName, hasTrueHero))
 
     // ════════════════════════════════════════════════════════════════════════
-    // Phase B: Game.SaveManager のディスク I/O とラウンドトリップ
+    // Phase B: SaveManager のディスク I/O とラウンドトリップ
     // ════════════════════════════════════════════════════════════════════════
 
     /// 指定スロットのセーブファイルが存在しても消す。File が無くても DeleteFile は
     /// エラーで返るがその場合は無視（`Result` の Err は単に「消すものが無い」）。
     def deleteSlotFile(slot: Int32): Unit \ Fs.FileWrite =
-        let path = Game.SaveManager.slotPath(slot);
+        let path = SaveManager.slotPath(slot);
         let _ = run {
             Fs.DeleteFile.delete(path)
         } with Fs.DeleteFile.runWithFileWrite;
@@ -122,11 +122,11 @@ mod TestSaveLoad {
         });
         let loaded = run {
             deleteSlotFile(testSlot());
-            match Game.SaveManager.write(testSlot(), data) {
+            match SaveManager.write(testSlot(), data) {
                 case Ok(_)    => ()
                 case Err(msg) => bug!("write failed: ${msg}")
             };
-            Game.SaveManager.read(testSlot())
+            SaveManager.read(testSlot())
         } with Fs.FileRead.runWithIO
           with Fs.FileWrite.runWithIO;
         Assert.assertEq(expected = Some(data), loaded)
@@ -136,7 +136,7 @@ mod TestSaveLoad {
     def testReadMissingSlotReturnsNone(): Unit \ {Assert, IO} =
         let loaded = run {
             deleteSlotFile(testSlot());
-            Game.SaveManager.read(testSlot())
+            SaveManager.read(testSlot())
         } with Fs.FileRead.runWithIO
           with Fs.FileWrite.runWithIO;
         Assert.assertEq(expected = (None: Option[SaveData]), loaded)
@@ -153,11 +153,11 @@ mod TestSaveLoad {
         });
         let text = run {
             deleteSlotFile(testSlot());
-            match Game.SaveManager.write(testSlot(), data) {
+            match SaveManager.write(testSlot(), data) {
                 case Ok(_)    => ()
                 case Err(msg) => bug!("write failed: ${msg}")
             };
-            let path = Game.SaveManager.slotPath(testSlot());
+            let path = SaveManager.slotPath(testSlot());
             let r = run { Fs.ReadFile.read(path) } with Fs.ReadFile.runWithFileRead;
             Result.getWithDefault("", r)
         } with Fs.FileRead.runWithIO

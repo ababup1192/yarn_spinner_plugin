@@ -171,8 +171,8 @@ mod Game.CommandRouter {
                 match attemptLoad(slotStr) {
                     case Ok(data) =>
                         Dialogue.Session.restart(
-                            Game.SaveManager.nodeName(data),
-                            Game.SaveManager.variables(data))
+                            Game.SaveData.nodeName(data),
+                            Game.SaveData.variables(data))
                     case Err(msg) =>
                         println("[CommandRouter] ${msg}");
                         Yarn.VariableAccess.setBool("\$_load_failed", true);
@@ -211,8 +211,8 @@ mod Game.CommandRouter {
                       |> Option.toOk("save: VM not active, skipped");
             _    <- {
                 let vars = Yarn.VariableAccess.variableSnapshot();
-                let data = Game.SaveManager.SaveData.SaveData(node, vars);
-                Game.SaveManager.write(slot, data)
+                let data = Game.SaveData.SaveData.SaveData(node, vars);
+                SaveManager.write(slot, data)
                     |> Result.mapErr(error -> "save write failed: ${error}")
             }
         ) yield ()
@@ -220,11 +220,11 @@ mod Game.CommandRouter {
     /// `<<load N>>` のロジック。成功で `SaveData` を返し、dispatchOne 側で
     /// `Session.restart` に流す。失敗時はログ文字列を返す。
     def attemptLoad(slotStr: String):
-            Result[String, Game.SaveManager.SaveData] \ Fs.FileRead =
+            Result[String, Game.SaveData.SaveData] \ Fs.FileRead =
         forM (
             slot <- Int32.fromString(slotStr)
                       |> Option.toOk("invalid load slot: ${slotStr}");
-            data <- Game.SaveManager.read(slot)
+            data <- SaveManager.read(slot)
                       |> Option.toOk("load: no save in slot ${slotStr}")
         ) yield data
 }

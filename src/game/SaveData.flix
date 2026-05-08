@@ -1,79 +1,74 @@
-/// `<<save N>>` / `<<load N>>` 用のセーブファイル I/O。
+/// Yarn 用セーブデータの型と、その `Saveable` インスタンス。
 ///
-/// 「現在ノード名 + 全変数」だけを `saves/slot{N}.json` に書き、
-/// `read` で同じスロット番号から取り戻す。フォーマットは
-/// `yarn/output.json` の `initialValues` と同じ Value 表現
+/// 「現在ノード名 + 全変数」を 1 セットにした Yarn 固有のドメイン型 `SaveData`
+/// と、それを `Json.JsonElement` に往復させるエンコーダ／デコーダを提供する。
+/// I/O 自体は `engine/SaveManager.flix` の `SaveManager.write` /
+/// `SaveManager.read` が `Saveable` 経由で行う。
+///
+/// Value 表現は `yarn/output.json` の `initialValues` と同形式
 /// （`{"boolValue":..}` / `{"floatValue":..}` / `{"stringValue":..}`）。
 ///
-/// CommandRouter 配線は Phase C で別途行う。本モジュールは
-/// 単独でも `Fs.FileWrite` / `Fs.FileRead` 効果を持つ呼び出し元から
-/// 使えば動く。
-mod Game.SaveManager {
+/// 別ジャンルのデータを永続化したいときは、独自の型と
+/// `instance Saveable[MyType]` を別ファイルで定義すれば `SaveManager` を
+/// そのまま流用できる。
+mod Game.SaveData {
+    use Yarn.Types.Value
+
+    /// セーブファイル 1 つ分の中身。`(NodeName, Variables)` の tuple を 1 ケース
+    /// enum に包む。Flix の record は Eq derive 不可なので位置引数で持つ。
+    /// アクセサ `nodeName` / `variables` を別途公開する。
+    pub enum SaveData with Eq, ToString {
+        case SaveData(NodeName, Variables)
+    }
+
+    /// セーブ復元時に再開する Yarn ノードの名前。
+    pub type alias NodeName = String
+
+    /// セーブ時点での Yarn 変数スナップショット（変数名 → 値）。
+    pub type alias Variables = Map[String, Value]
+
+    /// `SaveData` の `nodeName` を取り出す。
+    pub def nodeName(data: SaveData): NodeName =
+        let SaveData.SaveData(name, _) = data;
+        name
+
+    /// `SaveData` の `variables` を取り出す。
+    pub def variables(data: SaveData): Variables =
+        let SaveData.SaveData(_, vars) = data;
+        vars
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// Saveable インスタンス（Yarn SaveData ↔ JSON）
+// ════════════════════════════════════════════════════════════════════════
+//
+// engine 側 SaveManager / Persistence から呼ばれるエンコード／デコード本体。
+// Yarn の Value 表現を含むため Yarn ランタイムを知っているが、永続化の I/O
+// 自体は engine 側の汎用機構に委ねている（責務分離）。
+
+instance Saveable[Game.SaveData.SaveData] {
+    pub def toJson(data: Game.SaveData.SaveData): Json.JsonElement =
+        SaveDataCodec.encode(data)
+
+    pub def fromJson(element: Json.JsonElement): Option[Game.SaveData.SaveData] =
+        SaveDataCodec.decode(element)
+}
+
+/// SaveData の JSON エンコード／デコード実装。
+/// 外部からは `Saveable[Game.SaveData.SaveData]` 経由でしか触らない想定。
+mod SaveDataCodec {
     import java.math.{BigDecimal => JBigDecimal}
 
     use Yarn.Types.Value
     use Yarn.Types.Value.{BoolV, FloatV, StringV}
     use Json.JsonElement
     use Json.JsonElement.{JsonObject, JsonString, JsonNumber, JsonBool}
+    use Game.SaveData.SaveData
 
-    /// セーブファイル 1 つ分の中身。`(nodeName, variables)` の tuple を 1 ケース
-    /// enum に包む。Flix の record は Eq derive 不可なので位置引数で持つ。
-    /// アクセサ `nodeName` / `variables` を別途公開する。
-    pub enum SaveData with Eq, ToString {
-        case SaveData(String, Map[String, Value])
-    }
-
-    /// `SaveData` の `nodeName` を取り出す。
-    pub def nodeName(data: SaveData): String =
-        let SaveData.SaveData(name, _) = data;
-        name
-
-    /// `SaveData` の `variables` を取り出す。
-    pub def variables(data: SaveData): Map[String, Value] =
-        let SaveData.SaveData(_, vars) = data;
-        vars
-
-    /// `saves/slot{N}.json` のパス。
-    pub def slotPath(slot: Int32): String = "saves/slot${slot}.json"
-
-    // ════════════════════════════════════════════════════════════════════════
-    // 公開 API
-    // ════════════════════════════════════════════════════════════════════════
-
-    /// セーブデータを `saves/slot{N}.json` に書き出す。
-    /// 親ディレクトリ `saves/` の作成は呼び出し側（または devbox init_hook）で
-    /// 行う前提（`Fs.WriteFile` は親ディレクトリを自動作成しない）。
-    /// 失敗時は `Err(message)` を返す（呼び出し側で握り潰すかログに出すかを決める）。
-    pub def write(slot: Int32, data: SaveData): Result[String, Unit] \ Fs.FileWrite =
-        let path = slotPath(slot);
-        let json = encodeSaveData(data);
-        let pretty = Json.Write.toPrettyString(2, json);
-        let result = run {
-            Fs.WriteFile.write({str = pretty}, path)
-        } with Fs.WriteFile.runWithFileWrite;
-        match result {
-            case Ok(_)      => Ok(())
-            case Err(error) => Err("save write failed: ${error}")
-        }
-
-    /// セーブデータを `saves/slot{N}.json` から読む。
-    /// ファイルが存在しないか、読み取り／パース失敗なら `None`。
-    /// 復元処理（Session.restart 呼び出し）は呼び出し側の責務。
-    pub def read(slot: Int32): Option[SaveData] \ Fs.FileRead =
-        let readResult = run {
-            Fs.ReadFile.read(slotPath(slot))
-        } with Fs.ReadFile.runWithFileRead;
-        readResult
-            |> Result.toOption
-            |> Option.flatMap(Json.Parse.parse)
-            |> Option.flatMap(decodeSaveData)
-
-    // ════════════════════════════════════════════════════════════════════════
-    // エンコーダ
-    // ════════════════════════════════════════════════════════════════════════
+    // ── エンコード ──
 
     /// `SaveData` → `JsonElement`。`{"node":..., "variables":{...}}`。
-    def encodeSaveData(data: SaveData): JsonElement =
+    pub def encode(data: SaveData): JsonElement =
         let SaveData.SaveData(name, vars) = data;
         let variablesJson = vars
             |> Map.foldLeftWithKey((acc, varName, value) ->
@@ -105,13 +100,11 @@ mod Game.SaveManager {
             if (stripped.scale() < 0) stripped.setScale(0) else stripped
         }
 
-    // ════════════════════════════════════════════════════════════════════════
-    // デコーダ
-    // ════════════════════════════════════════════════════════════════════════
+    // ── デコード ──
 
     /// `JsonElement` → `Option[SaveData]`。形式不一致は `None`。
     /// forM で「全部 Some なら Some(SaveData)、ひとつでも None なら None」を平らに表現。
-    def decodeSaveData(element: JsonElement): Option[SaveData] =
+    pub def decode(element: JsonElement): Option[SaveData] =
         forM (
             top      <- expectObject(element);
             nodeJson <- Map.get("node", top);

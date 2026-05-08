@@ -22,6 +22,16 @@ mod Yarn.Types {
     /// 行を識別する文字列（例: "line:9110649c"）。
     pub type alias LineRef = String
 
+    /// Yarn 命令ストリーム上の絶対アドレス（VM のインストラクションポインタ）。
+    /// `JumpIfFalse` / `JumpTo` / `AddOption` の destination で使う。
+    pub type alias InstructionPointer = Int32
+
+    /// 行表示・選択肢・コマンドの引数置換に使う「スタックから pop する個数」。
+    pub type alias SubstitutionCount = Int32
+
+    /// `<<commandName arg1 arg2>>` のコマンドテキスト全体（コマンド名と引数を含む）。
+    pub type alias CommandText = String
+
     /// ノードヘッダの 1 エントリ。`title` や `$Yarn.Internal.TrackingVariable` など。
     pub type alias Header = {
         key   = String,
@@ -32,16 +42,16 @@ mod Yarn.Types {
     /// 各バリアントが必要な引数だけを持つように整形してある。
     pub enum Instruction with Eq, ToString {
         /// 1 行表示。スタック上位 N 個を pop して置換に使う。
-        case RunLine(LineRef, Int32)
+        case RunLine(LineRef, SubstitutionCount)
         /// 選択肢を蓄積する。最後の Bool は条件付きフラグ。
         /// (lineId, destination, substitutionCount, hasCondition)
-        case AddOption(LineRef, Int32, Int32, Bool)
+        case AddOption(LineRef, InstructionPointer, SubstitutionCount, Bool)
         /// 蓄積済みの選択肢を提示し、ユーザの選択結果をスタックに push する。
         case ShowOptions
         /// スタック top を覗いて `false` ならジャンプ。pop しない。
-        case JumpIfFalse(Int32)
+        case JumpIfFalse(InstructionPointer)
         /// 無条件ジャンプ。
-        case JumpTo(Int32)
+        case JumpTo(InstructionPointer)
         /// スタック top（数値）をジャンプ先として読み取る。pop しない。
         case PeekAndJump
         /// スタック top を捨てる。
@@ -64,7 +74,7 @@ mod Yarn.Types {
         /// 関数を呼ぶ。直前の `pushFloat` で push した数値が引数の個数。
         case CallFunc(String)
         /// カスタムコマンド実行。スタック上位 N 個を pop して置換に使う。
-        case RunCommand(String, Int32)
+        case RunCommand(CommandText, SubstitutionCount)
         /// `<<jump X>>` 由来。currentNode を置き換えるだけで callStack には積まない。
         /// 飛び先で `Return` に達するとそのまま対話完了。
         case RunNode(String)

@@ -9,15 +9,21 @@
 /// 見て自前の意味づけを行う。
 mod Markup.BBCode {
 
+    /// `[name]` `[name=value]` `[/name]` の name 部分。
+    pub type alias TagName = String
+
+    /// `[name a=1 b=2]` の属性 Map。
+    /// `[name=value]` 形式では、タグ名と同じキーで値が入る。
+    pub type alias Attributes = Map[String, String]
+
     /// 1 つのマークアップ片。
     /// - `Text` … タグ以外の生テキスト
     /// - `OpenTag` … `[name]` `[name=value]` `[name a=1 b=2]` 等の開始タグ
-    ///               `[name=value]` の場合、属性 Map にタグ名と同じキーで値が入る
     /// - `CloseTag` … `[/name]` の終了タグ
     pub enum Token with Eq, ToString {
         case Text(String)
-        case OpenTag(String, Map[String, String])
-        case CloseTag(String)
+        case OpenTag(TagName, Attributes)
+        case CloseTag(TagName)
     }
 
     /// BBCode 風文字列をトークン列に分解する。
