@@ -26,7 +26,7 @@ mod TestPhaseRestart {
                 Scene[NodeTag] \ {
                   Dialogue.SceneView.Inbox, Dialogue.SceneView.CommandInbox,
                   Dialogue.Session, Yarn.VariableAccess,
-                  GameEngine.Audio, IO, r
+                  GameEngine.Audio, Fs.FileRead, Fs.FileWrite, IO, r
                 } =
         if (framesLeft <= 0) scene
         else {
@@ -68,6 +68,8 @@ mod TestPhaseRestart {
             } with Dialogue.Runner.withRunner(rc, loaded)
               with Dialogue.Commands.withAsyncOnly
               with Dialogue.SceneView.withSceneView(rc)
+              with Fs.FileRead.runWithIO
+              with Fs.FileWrite.runWithIO
               with handler GameEngine.Audio {
                 def playAudio(name, k) = {
                     Ref.put(name :: Ref.get(playedSounds), playedSounds);

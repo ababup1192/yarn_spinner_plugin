@@ -33,4 +33,8 @@ mod Yarn.VariableStorage {
             case _               => 0.0
         };
         MutMap.put(name, FloatV(current + 1.0), storage)
+
+    /// 全エントリを不変 `Map` に書き出す。セーブ用スナップショットに使う。
+    pub def toMap(storage: VariableStorage[r]): Map[String, Value] \ r =
+        MutMap.toMap(storage)
 }

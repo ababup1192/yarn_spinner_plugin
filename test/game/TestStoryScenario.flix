@@ -183,7 +183,7 @@ mod TestStoryScenario {
         let hasGameOverBg = containsCommand("bg gameover fade 0.8", events);
         let hasDieSe = containsCommand("se die", events);
         // クリティカル後台詞 "ドラゴン: グ… やられた…" は brave=true 専用なので出ない
-        let hasDragonDefeated = containsLine("line:ef0369cf", events);
+        let hasDragonDefeated = containsLine("line:55526056", events);  // ドラゴン: グ… やられた…
         Assert.assertEq(
             expected = (true, true, false),
             (hasGameOverBg, hasDieSe, hasDragonDefeated))
@@ -198,7 +198,7 @@ mod TestStoryScenario {
             runScenario(vm, 0 :: 0 :: 0 :: Nil, 1500)
         };
         let cowardlyLineCount = List.count(
-            event -> event == ScenarioEvent.Line("line:55526056"),
+            event -> event == ScenarioEvent.Line("line:c3626721"),
             events);
         Assert.assertEq(expected = 3, cowardlyLineCount)
 
@@ -214,7 +214,7 @@ mod TestStoryScenario {
         };
         // 期待: GameOver 入口の bg gameover、最後の "GAME OVER" line、Done で終了
         let hasGameOverBg = containsCommand("bg gameover fade 0.8", events);
-        let hasGameOverLine = containsLine("line:7b0634cf", events);  // GAME OVER テキスト
+        let hasGameOverLine = containsLine("line:ed3633b8", events);  // GAME OVER テキスト
         let hasPhaseCommand = containsCommand("phase Start", events);
         let endedWithDone = List.last(events) == Some(ScenarioEvent.Done);
         Assert.assertEq(
@@ -341,7 +341,7 @@ mod TestStoryScenario {
         };
         let hasChestOpenSe = containsCommand("se chest_open", events);
         let hasItemAddKey = containsCommand("item add key", events);
-        let hasEmptyLine = containsLine("line:f491f519", events);  // たからばこは からっぽだ
+        let hasEmptyLine = containsLine("line:4ec0fc80", events);  // たからばこは からっぽだ
         Assert.assertEq(
             expected = (false, false, true),
             (hasChestOpenSe, hasItemAddKey, hasEmptyLine))
@@ -423,7 +423,7 @@ mod TestStoryScenario {
             let evs = runScenario(vm, 0 :: 0 :: 2 :: Nil, 500);
             (evs, Yarn.VariableStorage.get("\$brave", vm#variables))
         };
-        let hasReassuringLine = containsLine("line:f794e0ce", events);  // たのもしいぞ
+        let hasReassuringLine = containsLine("line:61a4e7b9", events);  // たのもしいぞ
         Assert.assertEq(
             expected = (Some(BoolV(true)), true),
             (braveVal, hasReassuringLine))
@@ -437,7 +437,7 @@ mod TestStoryScenario {
             let evs = runScenario(vm, 0 :: 1 :: 2 :: Nil, 500);
             (evs, Yarn.VariableStorage.get("\$brave", vm#variables))
         };
-        let hasResignedLine = containsLine("line:dbf5ee20", events);  // まあ よかろう
+        let hasResignedLine = containsLine("line:4dc5e957", events);  // まあ よかろう
         Assert.assertEq(
             expected = (Some(BoolV(false)), true),
             (braveVal, hasResignedLine))
@@ -455,8 +455,8 @@ mod TestStoryScenario {
             Yarn.VariableStorage.set("\$brave", BoolV(true), vm#variables);
             runScenario(vm, Nil, 500)
         };
-        let hasTrueHero = containsLine("line:4a1a41f1", events);  // しんの ゆうしゃ
-        let hasResigned = containsLine("line:db07fe61", events);  // ぶじで なによりじゃ
+        let hasTrueHero = containsLine("line:db07fe61", events);  // しんの ゆうしゃ
+        let hasResigned = containsLine("line:4d37f916", events);  // ぶじで なによりじゃ
         Assert.assertEq(
             expected = (true, false),
             (hasTrueHero, hasResigned))
@@ -470,8 +470,8 @@ mod TestStoryScenario {
             // 初期 $brave=false のまま
             runScenario(vm, Nil, 500)
         };
-        let hasTrueHero = containsLine("line:4a1a41f1", events);
-        let hasResigned = containsLine("line:db07fe61", events);
+        let hasTrueHero = containsLine("line:db07fe61", events);
+        let hasResigned = containsLine("line:4d37f916", events);
         Assert.assertEq(
             expected = (false, true),
             (hasTrueHero, hasResigned))

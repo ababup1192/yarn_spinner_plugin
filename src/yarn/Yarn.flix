@@ -37,5 +37,11 @@ mod Yarn {
         def setBool(name: String, value: Bool): Unit
         /// Bool 値を Yarn 変数から読む。未設定 / VM 未開始 / 型不一致は None。
         def getBool(name: String): Option[Bool]
+        /// 現在 VM がいるノードの名前。未開始なら None。
+        /// `<<save>>` ハンドラが「セーブの保存先ノード名」を取るのに使う。
+        def currentNode(): Option[String]
+        /// VM の全変数スナップショット。未開始なら空 Map。
+        /// `<<save>>` ハンドラが直列化対象として取得する。
+        def variableSnapshot(): Map[String, Yarn.Types.Value]
     }
 }

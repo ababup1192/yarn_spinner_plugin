@@ -33,6 +33,8 @@ mod Game.CommandRouter {
                                 GameEngine.Audio,
                                 Dialogue.Session,
                                 Yarn.VariableAccess,
+                                Fs.FileRead,
+                                Fs.FileWrite,
                                 IO,
                                 r
                               } =
@@ -55,7 +57,8 @@ mod Game.CommandRouter {
                      audioFader: Game.AudioFader.State[r],
                      scene: Scene[NodeTag]):
                      Scene[NodeTag] \ {
-                       GameEngine.Audio, Dialogue.Session, Yarn.VariableAccess, IO, r
+                       GameEngine.Audio, Dialogue.Session, Yarn.VariableAccess,
+                       Fs.FileRead, Fs.FileWrite, IO, r
                      } =
         let (name, args) = Dialogue.CommandParser.parse(text);
         match (name, args) {
@@ -154,12 +157,40 @@ mod Game.CommandRouter {
             case ("phase", phaseName :: _) =>
                 Dialogue.Session.start(phaseName);
                 scene
+            // セーブ: save <slot>
+            // 現在ノード名と全変数を `saves/slot{N}.json` に書き出す。
+            // ロジックは `attemptSave` に切り出し、ここはログ出力と
+            // submitCommandDone の発火だけ。
+            case ("save", slotStr :: _) =>
+                match attemptSave(slotStr) {
+                    case Ok(_)    => ()
+                    case Err(msg) => println("[CommandRouter] ${msg}")
+                };
+                Dialogue.Session.submitCommandDone();
+                scene
+            // ロード: load <slot>
+            // 成功時: `Session.restart` で新 VM を建てて旧 VM を破棄。submitCommandDone
+            // は呼ばない（phase Start と同じ理屈）。
+            // 失敗時: ログ + `$_load_failed = true` + submitCommandDone で旧 VM を
+            // 進める。story 側がこれを見て「セーブデータがありません」分岐を出せる。
+            case ("load", slotStr :: _) =>
+                match attemptLoad(slotStr) {
+                    case Ok(data) =>
+                        Dialogue.Session.restart(
+                            Game.SaveManager.nodeName(data),
+                            Game.SaveManager.variables(data))
+                    case Err(msg) =>
+                        println("[CommandRouter] ${msg}");
+                        Yarn.VariableAccess.setBool("\$_load_failed", true);
+                        Dialogue.Session.submitCommandDone()
+                };
+                scene
             // 空文字（理論上は来ない）
             case ("", _) =>
                 Dialogue.Session.submitCommandDone();
                 scene
-            // 未対応コマンド（phase / save / load / hotspot / shake 等）
-            // 次フェーズで実装。当面はログに出して story を進める。
+            // 未対応コマンド（hotspot / 他）
+            // 当面はログに出して story を進める。
             case _ =>
                 println("[CommandRouter] unhandled: ${name} ${args}");
                 Dialogue.Session.submitCommandDone();
@@ -173,4 +204,33 @@ mod Game.CommandRouter {
             Dialogue.Session.submitCommandDone();
             completeMany(count - 1)
         }
+
+    /// `<<save N>>` のロジック。失敗時はログ用の文字列を `Err` に詰める。
+    /// 各段の `Option` / `Result` を `forM` で 1 列に並べ、ネスト無しで失敗を
+    /// 短絡させる。dispatchOne 側はこの結果を pretty-print するだけ。
+    def attemptSave(slotStr: String):
+            Result[String, Unit] \ {Yarn.VariableAccess, Fs.FileWrite} =
+        forM (
+            slot <- Int32.fromString(slotStr)
+                      |> Option.toOk("invalid save slot: ${slotStr}");
+            node <- Yarn.VariableAccess.currentNode()
+                      |> Option.toOk("save: VM not active, skipped");
+            _    <- {
+                let vars = Yarn.VariableAccess.variableSnapshot();
+                let data = Game.SaveManager.SaveData.SaveData(node, vars);
+                Game.SaveManager.write(slot, data)
+                    |> Result.mapErr(error -> "save write failed: ${error}")
+            }
+        ) yield ()
+
+    /// `<<load N>>` のロジック。成功で `SaveData` を返し、dispatchOne 側で
+    /// `Session.restart` に流す。失敗時はログ文字列を返す。
+    def attemptLoad(slotStr: String):
+            Result[String, Game.SaveManager.SaveData] \ Fs.FileRead =
+        forM (
+            slot <- Int32.fromString(slotStr)
+                      |> Option.toOk("invalid load slot: ${slotStr}");
+            data <- Game.SaveManager.read(slot)
+                      |> Option.toOk("load: no save in slot ${slotStr}")
+        ) yield data
 }

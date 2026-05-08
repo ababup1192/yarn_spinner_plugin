@@ -7,3 +7,4 @@ build/
 lib/
 crash_report_*.txt
 yarn/.bin/
+saves/

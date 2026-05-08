@@ -51,6 +51,18 @@ mod Dialogue.Runner {
                 };
                 resume(result)
             }
+
+            def currentNode(resume) =
+                resume(match Ref.get(vmRef) {
+                    case Some(vm) => Ref.get(vm#currentNode)
+                    case None     => None
+                })
+
+            def variableSnapshot(resume) =
+                resume(match Ref.get(vmRef) {
+                    case Some(vm) => Yarn.VariableStorage.toMap(vm#variables)
+                    case None     => Map.empty()
+                })
         } with handler Dialogue.Session {
 
             def start(nodeName, resume) = {
@@ -98,6 +110,19 @@ mod Dialogue.Runner {
                     }
                     case None => resume()
                 }
+
+            def restart(nodeName, variables, resume) = {
+                // 新 VM を作って variables を流し込んでから走らせる。
+                // start() より前に変数を入れるのが肝。ノード冒頭で `{$brave}` 等を
+                // 参照するセリフが復元値で正しく substitute される。
+                let vm = Yarn.VM.init(rc, compiledProject, nodeName);
+                Map.forEach((name, value) ->
+                    Yarn.VariableStorage.set(name, value, vm#variables),
+                    variables);
+                Ref.put(Some(vm), vmRef);
+                runUntilWaiting(vm, compiledProject, maxStepsPerSubmit());
+                resume()
+            }
         }
 
     /// VM を 1 つの Waiting* / DialogueComplete に到達するまで step し続ける。

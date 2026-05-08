@@ -7,6 +7,7 @@ title: Start
 <<declare $inv_key = false as bool>>
 <<declare $inv_torch = false as bool>>
 <<declare $chest_opened = false as bool>>
+<<declare $_load_failed = false as bool>>
 
 <<bgm play title loop>>
 <<bg title fade 0.5>>
@@ -17,6 +18,11 @@ title: Start
     <<jump Intro>>
 -> つづきから
     <<load 1>>
+    <<if $_load_failed>>
+        ナレーション: セーブデータが ありません。
+        <<set $_load_failed = false>>
+        <<jump Start>>
+    <<endif>>
 ===
 
 title: Intro

@@ -465,6 +465,11 @@ mod Dialogue {
 
         /// コマンド実行完了の通知。
         def submitCommandDone(): Unit
+
+        /// VM を `nodeName` で初期化し、最初の命令を走らせる前に `variables` を流し込む。
+        /// `<<load>>` 由来。`start` と違い、ノード冒頭で変数を読む式（`${$brave}` 等）も
+        /// 復元値を見るので、ロード直後にセリフが正しい変数で描画される。
+        def restart(nodeName: String, variables: Map[String, Yarn.Types.Value]): Unit
     }
 
     /// プレゼンターが満たす契約。エンジン非依存。
