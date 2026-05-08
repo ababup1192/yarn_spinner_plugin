@@ -23,27 +23,26 @@ mod Game.CommandRouter {
     /// `Dialogue.SceneView.CommandInbox` から溜まったコマンドをすべて取り出して dispatch し、
     /// `WaitQueue` を `delta` だけ進めて期限切れ件数ぶん `submitCommandDone` を発火する。
     /// `bg` / `sprite` 系コマンドは `scene` を畳み込んでいくため、最終的な scene を返す。
-    pub def processCommands(waitQueue: Game.CommandWaitQueue.WaitQueue[r],
-                              shakeState: Game.ShakeState.State[r],
-                              audioFader: Game.AudioFader.State[r],
-                              delta: {delta = Duration},
+    /// 状態（wait queue / shake / audio fader）は custom effect 経由で参照する。
+    /// 実体は `Game.start` で region 内 Ref に閉じ込めて handler 注入される。
+    pub def processCommands(delta: {delta = Duration},
                               scene: Scene[NodeTag]):
                               Scene[NodeTag] \ {
                                 Dialogue.SceneView.CommandInbox,
                                 GameEngine.Audio,
                                 Dialogue.Session,
                                 Yarn.VariableAccess,
+                                Game.CommandWaitQueue.Access,
+                                Game.ShakeState.Access,
+                                Game.AudioFader.Access,
                                 Fs.FileRead,
                                 Fs.FileWrite,
-                                IO,
-                                r
+                                IO
                               } =
         let pending = Dialogue.SceneView.CommandInbox.takeAllCommands();
         let afterDispatch =
-            List.foldLeft((sc, text) ->
-                dispatchOne(text, waitQueue, shakeState, audioFader, sc),
-                scene, pending);
-        let expired = Game.CommandWaitQueue.tick(delta#delta, waitQueue);
+            List.foldLeft((sc, text) -> dispatchOne(text, sc), scene, pending);
+        let expired = Game.CommandWaitQueue.Access.tick(delta#delta);
         completeMany(expired);
         afterDispatch
 
@@ -51,14 +50,12 @@ mod Game.CommandRouter {
     /// 同期コマンドは即 `submitCommandDone`、非同期（wait）は WaitQueue に積むだけで
     /// 完了通知は呼ばない（後続の `tick` が発火する）。
     /// シーンを変えるコマンドは新しい scene を返し、それ以外は受け取った scene をそのまま返す。
-    def dispatchOne(text: String,
-                     waitQueue: Game.CommandWaitQueue.WaitQueue[r],
-                     shakeState: Game.ShakeState.State[r],
-                     audioFader: Game.AudioFader.State[r],
-                     scene: Scene[NodeTag]):
+    def dispatchOne(text: String, scene: Scene[NodeTag]):
                      Scene[NodeTag] \ {
                        GameEngine.Audio, Dialogue.Session, Yarn.VariableAccess,
-                       Fs.FileRead, Fs.FileWrite, IO, r
+                       Game.CommandWaitQueue.Access, Game.ShakeState.Access,
+                       Game.AudioFader.Access,
+                       Fs.FileRead, Fs.FileWrite, IO
                      } =
         let (name, args) = Dialogue.CommandParser.parse(text);
         match (name, args) {
@@ -66,7 +63,7 @@ mod Game.CommandRouter {
             // AudioFader に名前を登録して音量を 1.0 にリセット（前回の fade-out で
             // gain が 0 のまま残るのを防ぐ）。`alSourcePlay` 自体は playAudio で発火。
             case ("bgm", "play" :: assetName :: _) =>
-                Game.AudioFader.setBgm(assetName, audioFader);
+                Game.AudioFader.setBgm(assetName);
                 GameEngine.Audio.playAudio(assetName);
                 Dialogue.Session.submitCommandDone();
                 scene
@@ -76,8 +73,7 @@ mod Game.CommandRouter {
             case ("bgm", "fade" :: secStr :: _) =>
                 match Float64.fromString(secStr) {
                     case Some(seconds) =>
-                        Game.AudioFader.fadeOutCurrent(
-                            Duration.seconds(seconds), audioFader)
+                        Game.AudioFader.fadeOutCurrent(Duration.seconds(seconds))
                     case None =>
                         println("[CommandRouter] invalid bgm fade seconds: ${secStr}")
                 };
@@ -92,8 +88,7 @@ mod Game.CommandRouter {
             case ("wait", secStr :: _) =>
                 match Float64.fromString(secStr) {
                     case Some(seconds) =>
-                        Game.CommandWaitQueue.enqueue(
-                            Duration.seconds(seconds), waitQueue);
+                        Game.CommandWaitQueue.Access.enqueue(Duration.seconds(seconds));
                         scene
                     case None =>
                         println("[CommandRouter] invalid wait seconds: ${secStr}");
@@ -139,8 +134,7 @@ mod Game.CommandRouter {
             case ("shake", secStr :: _) =>
                 match Float64.fromString(secStr) {
                     case Some(seconds) =>
-                        Game.ShakeState.start(
-                            Duration.seconds(seconds), shakeIntensity(), shakeState)
+                        Game.ShakeState.start(Duration.seconds(seconds), shakeIntensity())
                     case None =>
                         println("[CommandRouter] invalid shake seconds: ${secStr}")
                 };

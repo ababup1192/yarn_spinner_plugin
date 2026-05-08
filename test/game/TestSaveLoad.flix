@@ -103,10 +103,10 @@ mod TestSaveLoad {
     // Phase B: Game.SaveManager のディスク I/O とラウンドトリップ
     // ════════════════════════════════════════════════════════════════════════
 
-    /// テスト用スロットファイルが存在しても消す。File が無くても DeleteFile は
+    /// 指定スロットのセーブファイルが存在しても消す。File が無くても DeleteFile は
     /// エラーで返るがその場合は無視（`Result` の Err は単に「消すものが無い」）。
-    def deleteTestSlot(): Unit \ Fs.FileWrite =
-        let path = Game.SaveManager.slotPath(testSlot());
+    def deleteSlotFile(slot: Int32): Unit \ Fs.FileWrite =
+        let path = Game.SaveManager.slotPath(slot);
         let _ = run {
             Fs.DeleteFile.delete(path)
         } with Fs.DeleteFile.runWithFileWrite;
@@ -121,7 +121,7 @@ mod TestSaveLoad {
             "\$player_name" => StringV("テスト")
         });
         let loaded = run {
-            deleteTestSlot();
+            deleteSlotFile(testSlot());
             match Game.SaveManager.write(testSlot(), data) {
                 case Ok(_)    => ()
                 case Err(msg) => bug!("write failed: ${msg}")
@@ -135,7 +135,7 @@ mod TestSaveLoad {
     @Test
     def testReadMissingSlotReturnsNone(): Unit \ {Assert, IO} =
         let loaded = run {
-            deleteTestSlot();
+            deleteSlotFile(testSlot());
             Game.SaveManager.read(testSlot())
         } with Fs.FileRead.runWithIO
           with Fs.FileWrite.runWithIO;
@@ -152,7 +152,7 @@ mod TestSaveLoad {
             "\$player_name" => StringV("テスト")
         });
         let text = run {
-            deleteTestSlot();
+            deleteSlotFile(testSlot());
             match Game.SaveManager.write(testSlot(), data) {
                 case Ok(_)    => ()
                 case Err(msg) => bug!("write failed: ${msg}")
@@ -180,9 +180,6 @@ mod TestSaveLoad {
         // ── ステップ 1: Ending を $brave=true / $player_name="セーブ" で開始
         //    → save 1 コマンドが CommandRouter 経由で発火 → ディスクに書く
         region rc {
-            let waitQueue = Game.CommandWaitQueue.empty(rc);
-            let shakeState = Game.ShakeState.empty(rc);
-            let audioFader = Game.AudioFader.empty(rc);
             let scene: Scene[NodeTag] = Scene.empty();
             run {
                 Dialogue.Session.restart("Ending",
@@ -191,18 +188,21 @@ mod TestSaveLoad {
                 // Ending: bg → bgm play → Line × 3（よくぞ／しんの／たびの）
                 // → <<save 1>> → Line（セーブしました）→ ...
                 // Line 3 つ進めれば <<save 1>> が走る
-                discard driveFrames(waitQueue, shakeState, audioFader, scene, 5);
+                discard driveFrames(scene, 5);
                 Dialogue.Session.submitNext();
-                discard driveFrames(waitQueue, shakeState, audioFader, scene, 5);
+                discard driveFrames(scene, 5);
                 Dialogue.Session.submitNext();
-                discard driveFrames(waitQueue, shakeState, audioFader, scene, 5);
+                discard driveFrames(scene, 5);
                 Dialogue.Session.submitNext();
-                discard driveFrames(waitQueue, shakeState, audioFader, scene, 10)
+                discard driveFrames(scene, 10)
             } with Dialogue.Runner.withRunner(rc, compiledProject)
               with Dialogue.Commands.withAsyncOnly
               with Dialogue.SceneView.withSceneView(rc)
               with Fs.FileRead.runWithIO
               with Fs.FileWrite.runWithIO
+              with Game.ShakeState.withState(rc)
+              with Game.AudioFader.withState(rc)
+              with Game.CommandWaitQueue.withState(rc)
               with handler GameEngine.Audio {
                 def playAudio(_n, k) = k(())
                 def stopAudio(_n, k) = k(())
@@ -212,21 +212,20 @@ mod TestSaveLoad {
         // ── ステップ 2: 別 region で load → Ending が再生され、$brave=true /
         //    $player_name="セーブ" の世界線で「しんの ゆうしゃ」line が出る
         let log = region rc {
-            let waitQueue = Game.CommandWaitQueue.empty(rc);
-            let shakeState = Game.ShakeState.empty(rc);
-            let audioFader = Game.AudioFader.empty(rc);
             let scene: Scene[NodeTag] = Scene.empty();
             let viewLog = Ref.fresh(rc, (Nil: List[Dialogue.ViewEvent]));
             run {
                 Dialogue.Session.start("Start");
                 // Start のオプションで「つづきから」(index 1) を選んで <<load 1>>
-                discard driveFramesRecording(viewLog, waitQueue, shakeState,
-                                              audioFader, scene, 1, 50)
+                discard driveFramesRecording(viewLog, scene, 1, 50)
             } with Dialogue.Runner.withRunner(rc, compiledProject)
               with Dialogue.Commands.withAsyncOnly
               with Dialogue.SceneView.withSceneView(rc)
               with Fs.FileRead.runWithIO
               with Fs.FileWrite.runWithIO
+              with Game.ShakeState.withState(rc)
+              with Game.AudioFader.withState(rc)
+              with Game.CommandWaitQueue.withState(rc)
               with handler GameEngine.Audio {
                 def playAudio(_n, k) = k(())
                 def stopAudio(_n, k) = k(())
@@ -250,24 +249,26 @@ mod TestSaveLoad {
     def testLoadWithoutSaveFlagsLoadFailed(): Unit \ {Assert, IO} =
         let compiledProject = TestStoryFixture.loadProject();
         let log = region rc {
-            let waitQueue = Game.CommandWaitQueue.empty(rc);
-            let shakeState = Game.ShakeState.empty(rc);
-            let audioFader = Game.AudioFader.empty(rc);
             let scene: Scene[NodeTag] = Scene.empty();
             let viewLog = Ref.fresh(rc, (Nil: List[Dialogue.ViewEvent]));
             run {
+                // 直前テストの保存物が残っていると <<load 1>> が成功してしまうので
+                // saves/slot1.json を確実に消してから走らせる。
+                deleteSlotFile(1);
                 Dialogue.Session.start("Start");
                 // つづきから (index 1) を選んで `<<load 1>>` が走るが
-                // saves/slot1.json は前段で消し済みなので失敗する。
+                // saves/slot1.json は冒頭で消し済みなので失敗する。
                 // story.yarn の `$_load_failed` 分岐が「ありません」line を
                 // 出して `<<jump Start>>` で先頭に戻すはず。
-                discard driveFramesRecording(viewLog, waitQueue, shakeState,
-                                              audioFader, scene, 1, 50)
+                discard driveFramesRecording(viewLog, scene, 1, 50)
             } with Dialogue.Runner.withRunner(rc, compiledProject)
               with Dialogue.Commands.withAsyncOnly
               with Dialogue.SceneView.withSceneView(rc)
               with Fs.FileRead.runWithIO
               with Fs.FileWrite.runWithIO
+              with Game.ShakeState.withState(rc)
+              with Game.AudioFader.withState(rc)
+              with Game.CommandWaitQueue.withState(rc)
               with handler GameEngine.Audio {
                 def playAudio(_n, k) = k(())
                 def stopAudio(_n, k) = k(())
@@ -287,15 +288,15 @@ mod TestSaveLoad {
     /// で次へ進める + processCommands を 1 回回す、これを `framesLeft` 回。
     /// 選択肢に当たったら `choice` の値を選ぶ（複数選択肢ならどれにも同じ index）。
     def driveFramesRecording(viewLog: Ref[List[Dialogue.ViewEvent], r],
-                              waitQueue: Game.CommandWaitQueue.WaitQueue[r],
-                              shakeState: Game.ShakeState.State[r],
-                              audioFader: Game.AudioFader.State[r],
                               scene: Scene[NodeTag],
                               choice: Int32,
                               framesLeft: Int32):
                               Scene[NodeTag] \ {
                                 Dialogue.SceneView.Inbox, Dialogue.SceneView.CommandInbox,
                                 Dialogue.Session, Yarn.VariableAccess,
+                                Game.CommandWaitQueue.Access,
+                                Game.ShakeState.Access,
+                                Game.AudioFader.Access,
                                 GameEngine.Audio, Fs.FileRead, Fs.FileWrite, IO, r
                               } =
         if (framesLeft <= 0) scene
@@ -312,23 +313,20 @@ mod TestSaveLoad {
                 }
             }, viewEvents);
             let next = Game.CommandRouter.processCommands(
-                waitQueue, shakeState, audioFader,
                 delta = Duration.seconds(0.1), scene);
-            driveFramesRecording(viewLog, waitQueue, shakeState, audioFader,
-                                  next, choice, framesLeft - 1)
+            driveFramesRecording(viewLog, next, choice, framesLeft - 1)
         }
 
     /// `driveFramesRecording` の view 記録なし版。save テストで
     /// 「とにかく story を進める」だけに使う。
-    def driveFrames(waitQueue: Game.CommandWaitQueue.WaitQueue[r],
-                     shakeState: Game.ShakeState.State[r],
-                     audioFader: Game.AudioFader.State[r],
-                     scene: Scene[NodeTag],
-                     framesLeft: Int32):
+    def driveFrames(scene: Scene[NodeTag], framesLeft: Int32):
                      Scene[NodeTag] \ {
                        Dialogue.SceneView.Inbox, Dialogue.SceneView.CommandInbox,
                        Dialogue.Session, Yarn.VariableAccess,
-                       GameEngine.Audio, Fs.FileRead, Fs.FileWrite, IO, r
+                       Game.CommandWaitQueue.Access,
+                       Game.ShakeState.Access,
+                       Game.AudioFader.Access,
+                       GameEngine.Audio, Fs.FileRead, Fs.FileWrite, IO
                      } =
         if (framesLeft <= 0) scene
         else {
@@ -339,8 +337,7 @@ mod TestSaveLoad {
                 case _ => ()
             }, viewEvents);
             let next = Game.CommandRouter.processCommands(
-                waitQueue, shakeState, audioFader,
                 delta = Duration.seconds(0.1), scene);
-            driveFrames(waitQueue, shakeState, audioFader, next, framesLeft - 1)
+            driveFrames(next, framesLeft - 1)
         }
 }

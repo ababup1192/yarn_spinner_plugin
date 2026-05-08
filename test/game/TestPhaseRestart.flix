@@ -18,14 +18,14 @@ mod TestPhaseRestart {
     ///     `<<wait>>` も `WaitQueue.tick` で進める
     /// (4) `framesLeft` 回ループ
     def drive(viewLog: Ref[List[Dialogue.ViewEvent], r],
-                waitQueue: Game.CommandWaitQueue.WaitQueue[r],
-                shakeState: Game.ShakeState.State[r],
-                audioFader: Game.AudioFader.State[r],
                 scene: Scene[NodeTag],
                 framesLeft: Int32):
                 Scene[NodeTag] \ {
                   Dialogue.SceneView.Inbox, Dialogue.SceneView.CommandInbox,
                   Dialogue.Session, Yarn.VariableAccess,
+                  Game.CommandWaitQueue.Access,
+                  Game.ShakeState.Access,
+                  Game.AudioFader.Access,
                   GameEngine.Audio, Fs.FileRead, Fs.FileWrite, IO, r
                 } =
         if (framesLeft <= 0) scene
@@ -43,9 +43,8 @@ mod TestPhaseRestart {
             }, viewEvents);
             // dt = 0.1s／frame として `<<wait 1.0>>` は 10 frame で進む
             let next = Game.CommandRouter.processCommands(
-                waitQueue, shakeState, audioFader,
                 delta = Duration.seconds(0.1), scene);
-            drive(viewLog, waitQueue, shakeState, audioFader, next, framesLeft - 1)
+            drive(viewLog, next, framesLeft - 1)
         }
 
     /// GameOver を起点に dialogue を流し、`<<phase Start>>` 経由で
@@ -55,21 +54,21 @@ mod TestPhaseRestart {
     def testGameOverReturnsToTitleViaPhaseStart(): Unit \ {Assert, IO} =
         let loaded = TestStoryFixture.loadProject();
         let titleBgmCalled = region rc {
-            let waitQueue = Game.CommandWaitQueue.empty(rc);
-            let shakeState = Game.ShakeState.empty(rc);
-            let audioFader = Game.AudioFader.empty(rc);
             let viewLog = Ref.fresh(rc, (Nil: List[Dialogue.ViewEvent]));
             let playedSounds = Ref.fresh(rc, (Nil: List[String]));
             let scene: Scene[NodeTag] = Scene.empty();
 
             run {
                 Dialogue.Session.start("GameOver");
-                discard drive(viewLog, waitQueue, shakeState, audioFader, scene, 80)
+                discard drive(viewLog, scene, 80)
             } with Dialogue.Runner.withRunner(rc, loaded)
               with Dialogue.Commands.withAsyncOnly
               with Dialogue.SceneView.withSceneView(rc)
               with Fs.FileRead.runWithIO
               with Fs.FileWrite.runWithIO
+              with Game.ShakeState.withState(rc)
+              with Game.AudioFader.withState(rc)
+              with Game.CommandWaitQueue.withState(rc)
               with handler GameEngine.Audio {
                 def playAudio(name, k) = {
                     Ref.put(name :: Ref.get(playedSounds), playedSounds);

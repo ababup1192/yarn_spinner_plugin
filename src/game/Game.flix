@@ -98,7 +98,10 @@ mod Game {
     /// 対話関連の handler 連結（Runner / AsyncOnly / SceneView+Inbox+CommandInbox）は
     /// `Dialogue.withDialog` に閉じ込めてあり、region / event queue は外には漏れない。
     /// `Editor.withState(rc)` で F1 トグル + ホットリロード監視 + EditHistory(undo) を注入する。
-    /// `<<wait>>` 用の WaitQueue も region rc に確保し、毎フレームの gameLoop に渡す。
+    ///
+    /// ゲーム特有状態（wait queue / shake / audio fader）は region 内 Ref に閉じ込め、
+    /// 各 module の `Access` effect 経由で読み書きする handler を注入する。
+    /// gameLoop からは Ref が見えない。
     pub def start():
             Unit \ {GameEngine.Game, GameEngine.Audio, Fs.FileRead, Fs.FileWrite,
                     Fs.Glob, Fs.ModificationTime, Math.Random,
@@ -108,15 +111,14 @@ mod Game {
         let fontAtlas = GameEngine.Game.getFontAtlas(DialogueScene.fontName());
         let boldFontAtlas = GameEngine.Game.getFontAtlas(DialogueScene.boldFontName());
         region rc {
-            let waitQueue = Game.CommandWaitQueue.empty(rc);
-            let shakeState = Game.ShakeState.empty(rc);
-            let audioFader = Game.AudioFader.empty(rc);
             run {
                 Dialogue.Session.start("Start");
-                gameLoop(fontAtlas, boldFontAtlas, waitQueue, shakeState, audioFader,
-                          buildScene(fontAtlas, boldFontAtlas))
+                gameLoop(fontAtlas, boldFontAtlas, buildScene(fontAtlas, boldFontAtlas))
             } with Editor.withState(rc)
               with Dialogue.withDialog(yarnProject)
+              with Game.ShakeState.withState(rc)
+              with Game.AudioFader.withState(rc)
+              with Game.CommandWaitQueue.withState(rc)
         }
 
     /// メインループ（7 段パイプライン）。
@@ -128,9 +130,6 @@ mod Game {
     ///   (6) 末尾再帰
     def gameLoop(fontAtlas: FontAtlas,
                   boldFontAtlas: FontAtlas,
-                  waitQueue: Game.CommandWaitQueue.WaitQueue[r],
-                  shakeState: Game.ShakeState.State[r],
-                  audioFader: Game.AudioFader.State[r],
                   scene: Scene[NodeTag]):
                   Unit \ {GameEngine.Game, GameEngine.Audio, Dialogue.Session,
                           Dialogue.SceneView.Inbox, Dialogue.SceneView.CommandInbox,
@@ -138,7 +137,10 @@ mod Game {
                           Editor.EditorState,
                           EditHistory.Rewind, Fs.FileRead, Fs.FileWrite,
                           Math.Random,
-                          IO, Chan, NonDet, r} =
+                          Game.CommandWaitQueue.Access,
+                          Game.ShakeState.Access,
+                          Game.AudioFader.Access,
+                          IO, Chan, NonDet} =
         if (GameEngine.Game.shouldClose()
             or GameEngine.Game.isKeyPressed(GameEngine.Key.Escape)) ()
         else {
@@ -157,14 +159,12 @@ mod Game {
             // (3) Yarn コマンド処理。`runCommand` で別キュー化された command 文字列を
             // すべて取り出し、音再生 / 変数書き込み / wait 登録 / fallback ログに振り分ける。
             // wait 完了時は CommandRouter 内で `submitCommandDone` を発火する。
-            let afterCommands =
-                Game.CommandRouter.processCommands(waitQueue, shakeState, audioFader,
-                    delta = dt, updated);
+            let afterCommands = Game.CommandRouter.processCommands(delta = dt, updated);
             // (3.5) 画面ゆれ。アクティブなら毎フレーム ±intensity のランダムオフセットを
             // World レイヤに注入する。期限切れになったタイミングで (0,0) に戻す。
-            let afterShake = Game.ShakeState.tickAndApply(dt, shakeState, afterCommands);
+            let afterShake = Game.ShakeState.tickAndApply(dt, afterCommands);
             // (3.6) BGM フェード進行。fade 中なら毎フレーム setVolume、完了で stopAudio。
-            Game.AudioFader.tick(dt, audioFader);
+            Game.AudioFader.tick(dt);
             // (4) ホットリロード判定。再構築時は対話の進行状態（UIState）を維持し、
             // 表示ノード（Body / Transition / Indicator / layer の visible）も
             // 旧状態から再同期する。エディタ ON 中は `process` が走らないので、
@@ -180,6 +180,6 @@ mod Game {
                 else afterShake;
             // (5) エディタオーバーレイ → 描画
             GameEngine.render(Editor.applyOverlay(fontAtlas, next));
-            gameLoop(fontAtlas, boldFontAtlas, waitQueue, shakeState, audioFader, next)
+            gameLoop(fontAtlas, boldFontAtlas, next)
         }
 }
