@@ -143,6 +143,17 @@ mod Game.CommandRouter {
                 };
                 Dialogue.Session.submitCommandDone();
                 scene
+            // フェーズ遷移: phase <nodeName>
+            // 旧 VM を破棄して `nodeName` から新規 Session を始める高レベル切替。
+            // story.yarn の GameOver 末尾で `<<phase Start>>` → `<<stop>>` の組で
+            // 「死亡 → タイトルに戻る」を表現するために使う。
+            // `Session.start` が新しい VM を vmRef に差し替えるので、後続の `<<stop>>`
+            // 命令は旧 VM 上のもので決して実行されない（旧 VM はそのまま GC される）。
+            // submitCommandDone は呼ばない: 新 VM はもう自分の最初の命令まで進んでおり、
+            // 旧 VM の WaitingCommand に対する完了通知は意味を持たない。
+            case ("phase", phaseName :: _) =>
+                Dialogue.Session.start(phaseName);
+                scene
             // 空文字（理論上は来ない）
             case ("", _) =>
                 Dialogue.Session.submitCommandDone();
