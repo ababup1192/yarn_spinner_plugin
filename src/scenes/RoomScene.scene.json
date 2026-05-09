@@ -1,0 +1,19 @@
+{
+  "type": "CanvasLayer",
+  "name": "Room",
+  "layer": 5,
+  "pos": [0, 0],
+  "rotation": 0,
+  "scale": [1, 1],
+  "children": [
+    {
+      "type": "Sprite2D",
+      "name": "Bg",
+      "pos": [240, 150],
+      "scale": [1, 1],
+      "texture": "",
+      "centered": true,
+      "visible": false
+    }
+  ]
+}

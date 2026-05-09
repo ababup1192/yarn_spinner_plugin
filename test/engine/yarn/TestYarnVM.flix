@@ -8,6 +8,10 @@
 ///
 /// `StepResult` は `Eq` を派生していないため、`match` で取り出した値を
 /// プリミティブにしてから `assertEq` で比較する。
+///
+/// `Yarn.VM.step` は `Yarn.BuiltinExtension.Access` を要求するため、各テストは
+/// `withNoExtension` で 1 段ハンドラを被せる（拡張なしで engine 同梱 builtin だけを
+/// 評価する）。
 mod TestYarnVM {
     use Yarn.Types.{YarnProject, Value}
     use Yarn.Types.Value.{BoolV, FloatV, StringV}
@@ -65,14 +69,14 @@ mod TestYarnVM {
             "]";
         let loaded = buildProject("Main", instructions);
         let label = region rc {
-            let vm = Yarn.VM.init(rc, loaded, "Main");
-            // pushString, pushFloat, callFunc, jumpIfFalse, return の 5 命令を進める。
-            // ジャンプが効いていれば pop は飛ばされて、ip=5 の return に直接到達する。
-            discard Yarn.VM.step(vm); // pushString
-            discard Yarn.VM.step(vm); // pushFloat
-            discard Yarn.VM.step(vm); // callFunc
-            discard Yarn.VM.step(vm); // jumpIfFalse → ip=5
-            stepResultLabel(Yarn.VM.step(vm))
+            run {
+                let vm = Yarn.VM.init(rc, loaded, "Main");
+                discard Yarn.VM.step(vm); // pushString
+                discard Yarn.VM.step(vm); // pushFloat
+                discard Yarn.VM.step(vm); // callFunc
+                discard Yarn.VM.step(vm); // jumpIfFalse → ip=5
+                stepResultLabel(Yarn.VM.step(vm))
+            } with Yarn.BuiltinExtension.withNoExtension
         };
         Assert.assertEq(expected = "DialogueComplete", label)
 
@@ -99,15 +103,17 @@ mod TestYarnVM {
             "]";
         let loaded = buildProject("Main", instructions);
         let lineRef = region rc {
-            let vm = Yarn.VM.init(rc, loaded, "Main");
-            discard Yarn.VM.step(vm);
-            discard Yarn.VM.step(vm);
-            discard Yarn.VM.step(vm);
-            discard Yarn.VM.step(vm);
-            match Yarn.VM.step(vm) {
-                case WaitingLine(lineId, _) => lineId
-                case _                       => bug!("expected WaitingLine after fall-through")
-            }
+            run {
+                let vm = Yarn.VM.init(rc, loaded, "Main");
+                discard Yarn.VM.step(vm);
+                discard Yarn.VM.step(vm);
+                discard Yarn.VM.step(vm);
+                discard Yarn.VM.step(vm);
+                match Yarn.VM.step(vm) {
+                    case WaitingLine(lineId, _) => lineId
+                    case _                       => bug!("expected WaitingLine after fall-through")
+                }
+            } with Yarn.BuiltinExtension.withNoExtension
         };
         Assert.assertEq(expected = "line:reached", lineRef)
 
@@ -133,11 +139,13 @@ mod TestYarnVM {
             "]";
         let loaded = buildProject("Main", instructions);
         let stored = region rc {
-            let vm = Yarn.VM.init(rc, loaded, "Main");
-            discard Yarn.VM.step(vm); // pushBool
-            discard Yarn.VM.step(vm); // storeVariable
-            discard Yarn.VM.step(vm); // pop
-            Yarn.VariableStorage.get("\$brave", vm#variables)
+            run {
+                let vm = Yarn.VM.init(rc, loaded, "Main");
+                discard Yarn.VM.step(vm); // pushBool
+                discard Yarn.VM.step(vm); // storeVariable
+                discard Yarn.VM.step(vm); // pop
+                Yarn.VariableStorage.get("\$brave", vm#variables)
+            } with Yarn.BuiltinExtension.withNoExtension
         };
         Assert.assertEq(expected = Some(BoolV(true)), stored)
 
@@ -159,10 +167,12 @@ mod TestYarnVM {
             "]";
         let loaded = buildProject("Main", instructions);
         let label = region rc {
-            let vm = Yarn.VM.init(rc, loaded, "Main");
-            discard Yarn.VM.step(vm); // pushBool false
-            discard Yarn.VM.step(vm); // jumpIfFalse → ip=3
-            stepResultLabel(Yarn.VM.step(vm))
+            run {
+                let vm = Yarn.VM.init(rc, loaded, "Main");
+                discard Yarn.VM.step(vm); // pushBool false
+                discard Yarn.VM.step(vm); // jumpIfFalse → ip=3
+                stepResultLabel(Yarn.VM.step(vm))
+            } with Yarn.BuiltinExtension.withNoExtension
         };
         Assert.assertEq(expected = "DialogueComplete", label)
 
@@ -194,15 +204,17 @@ mod TestYarnVM {
             case Err(_) => bug!("synthetic Main+Sub project failed")
         };
         let counts = region rc {
-            let vm = Yarn.VM.init(rc, loaded, "Main");
-            // step #1: runNode Sub を実行し、Sub の visiting カウンタを +1 にする。
-            discard Yarn.VM.step(vm);
-            // 訪問カウンタを直接読む。
-            let countMain = Yarn.Builtins.call(
-                "visited_count", StringV("Main") :: Nil, vm#variables);
-            let countSub = Yarn.Builtins.call(
-                "visited_count", StringV("Sub") :: Nil, vm#variables);
-            (countMain, countSub)
+            run {
+                let vm = Yarn.VM.init(rc, loaded, "Main");
+                // step #1: runNode Sub を実行し、Sub の visiting カウンタを +1 にする。
+                discard Yarn.VM.step(vm);
+                // 訪問カウンタを直接読む。
+                let countMain = Yarn.Builtins.call(
+                    "visited_count", StringV("Main") :: Nil, vm#variables);
+                let countSub = Yarn.Builtins.call(
+                    "visited_count", StringV("Sub") :: Nil, vm#variables);
+                (countMain, countSub)
+            } with Yarn.BuiltinExtension.withNoExtension
         };
         let expectedMain: Result[String, Value] = Ok(FloatV(1.0));
         let expectedSub: Result[String, Value]  = Ok(FloatV(1.0));
@@ -238,9 +250,11 @@ mod TestYarnVM {
             case Err(_) => bug!("synthetic project failed")
         };
         let label = region rc {
-            let vm = Yarn.VM.init(rc, loaded, "Main");
-            discard Yarn.VM.step(vm); // runNode Sub
-            stepResultLabel(Yarn.VM.step(vm)) // Sub の return
+            run {
+                let vm = Yarn.VM.init(rc, loaded, "Main");
+                discard Yarn.VM.step(vm); // runNode Sub
+                stepResultLabel(Yarn.VM.step(vm)) // Sub の return
+            } with Yarn.BuiltinExtension.withNoExtension
         };
         Assert.assertEq(expected = "DialogueComplete", label)
 
@@ -274,13 +288,15 @@ mod TestYarnVM {
             case Err(_) => bug!("synthetic project failed")
         };
         let lineRef = region rc {
-            let vm = Yarn.VM.init(rc, loaded, "Main");
-            discard Yarn.VM.step(vm); // detourToNode Sub
-            discard Yarn.VM.step(vm); // Sub の return → NodeComplete、Main ip=1 へ
-            match Yarn.VM.step(vm) {  // runLine "line:after-detour"
-                case WaitingLine(id, _) => id
-                case _                  => bug!("expected WaitingLine after detour return")
-            }
+            run {
+                let vm = Yarn.VM.init(rc, loaded, "Main");
+                discard Yarn.VM.step(vm); // detourToNode Sub
+                discard Yarn.VM.step(vm); // Sub の return → NodeComplete、Main ip=1 へ
+                match Yarn.VM.step(vm) {  // runLine "line:after-detour"
+                    case WaitingLine(id, _) => id
+                    case _                  => bug!("expected WaitingLine after detour return")
+                }
+            } with Yarn.BuiltinExtension.withNoExtension
         };
         Assert.assertEq(expected = "line:after-detour", lineRef)
 
@@ -314,9 +330,11 @@ mod TestYarnVM {
             case Err(_) => bug!("synthetic project failed")
         };
         let label = region rc {
-            let vm = Yarn.VM.init(rc, loaded, "Main");
-            discard Yarn.VM.step(vm); // detourToNode Sub
-            stepResultLabel(Yarn.VM.step(vm)) // Sub の stop → DialogueComplete
+            run {
+                let vm = Yarn.VM.init(rc, loaded, "Main");
+                discard Yarn.VM.step(vm); // detourToNode Sub
+                stepResultLabel(Yarn.VM.step(vm)) // Sub の stop → DialogueComplete
+            } with Yarn.BuiltinExtension.withNoExtension
         };
         Assert.assertEq(expected = "DialogueComplete", label)
 }

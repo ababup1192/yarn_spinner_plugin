@@ -34,11 +34,11 @@ mod TestYarnScenario {
     /// 選択肢に当たったら choices の先頭を消費して selectOption する。
     /// maxSteps を超えたら StoppedAtLimit を末尾に付けて打ち切る。
     def runScenario(vm: VM[r], choices: List[Choice], maxSteps: Int32):
-                     List[ScenarioEvent] \ r =
+                     List[ScenarioEvent] \ r + Yarn.BuiltinExtension.Access =
         loop(vm, choices, maxSteps, Nil) |> List.reverse
 
     def loop(vm: VM[r], choices: List[Choice], remaining: Int32,
-              acc: List[ScenarioEvent]): List[ScenarioEvent] \ r =
+              acc: List[ScenarioEvent]): List[ScenarioEvent] \ r + Yarn.BuiltinExtension.Access =
         if (remaining <= 0)
             ScenarioEvent.StoppedAtLimit :: acc
         else
@@ -92,8 +92,10 @@ mod TestYarnScenario {
     def testYesChoiceScenario(): Unit \ Assert =
         let loaded = TestYarnFixture.loadProject();
         let events = region rc {
-            let vm = Yarn.VM.init(rc, loaded, "Start");
-            runScenario(vm, Choice.Yes :: Nil, 1000)
+            run {
+                let vm = Yarn.VM.init(rc, loaded, "Start");
+                runScenario(vm, Choice.Yes :: Nil, 1000)
+            } with Yarn.BuiltinExtension.withNoExtension
         };
         let expected: List[ScenarioEvent] =
             ScenarioEvent.Line("line:9110649c", Nil) ::
@@ -121,8 +123,10 @@ mod TestYarnScenario {
         // 「いいえ」を 100 回（実質無限）。max ステップで切られる前提。
         let manyNoChoices = List.repeat(100, Choice.No);
         let events = region rc {
-            let vm = Yarn.VM.init(rc, loaded, "Start");
-            runScenario(vm, manyNoChoices, 1000)
+            run {
+                let vm = Yarn.VM.init(rc, loaded, "Start");
+                runScenario(vm, manyNoChoices, 1000)
+            } with Yarn.BuiltinExtension.withNoExtension
         };
         // 最後のイベントが StoppedAtLimit であること（無限再帰がガードされた）と、
         // 先頭 5 イベントが期待どおりであることを 1 度に確認する。
@@ -145,8 +149,10 @@ mod TestYarnScenario {
     def testStepLimitGuardsAgainstInfiniteLoop(): Unit \ Assert =
         let loaded = TestYarnFixture.loadProject();
         let events = region rc {
-            let vm = Yarn.VM.init(rc, loaded, "Start");
-            runScenario(vm, Choice.No :: Nil, 5)
+            run {
+                let vm = Yarn.VM.init(rc, loaded, "Start");
+                runScenario(vm, Choice.No :: Nil, 5)
+            } with Yarn.BuiltinExtension.withNoExtension
         };
         // 5 ステップ以内で Line(9110649c) が出て、その後すぐ StoppedAtLimit。
         Assert.assertEq(expected = Some(ScenarioEvent.StoppedAtLimit), List.last(events))

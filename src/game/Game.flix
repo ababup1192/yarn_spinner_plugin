@@ -11,9 +11,14 @@
 
 /// Scene[s] のジェネリック s に当てるタグ。
 /// 対話レイヤだけがゲームロジックを持つ（root の `Dialogue.UIState` に状態を集約）。
+/// Room レイヤは `RoomScene.Data`（現在の roomId）を持つ。
+/// Hotspot は Area2D 1 個分のクリック対象で、`HotspotData` に部屋 id とホットスポット id を
+/// 持って `AreaHandler.onAreaClicked` で yarn ノードを起動する。
 pub enum NodeTag {
     case NoTag
     case Dialogue(Dialogue.UIState)
+    case Room(RoomScene.Data)
+    case Hotspot(RoomScene.HotspotData)
 }
 
 /// Node 実装。Dialogue レイヤの `process` を `DialogueScene.process` に委譲する。
@@ -33,13 +38,50 @@ instance Node[NodeTag] {
         }
 }
 
-/// 入力ハンドラ。確定キーで tap SE を鳴らすため `GameEngine.Audio` も Aef に含める。
+/// 入力ハンドラ。
+/// 確定キーで tap SE を鳴らすため `GameEngine.Audio`、マウスクリックの伝播先である
+/// AreaHandler が `Dialogue.Session` を要求するため `Aef` に同包。
+/// 各 redef の body はこのうち一部しか使わないので `checked_ecast` で trait Aef
+/// に揃える。
+/// マウスクリックは「探索モード（Yarn idle）」のみ `AreaEvent.dispatchClicks` に流す。
+/// 対話モード中のクリックは無視する。
 instance InputEvent.InputHandler[NodeTag] {
     type Aef = { Dialogue.Session, GameEngine.Audio }
 
     redef onKeyPressed(key: GameEngine.Key, scene: Scene[NodeTag]):
                         Scene[NodeTag] \ { Dialogue.Session, GameEngine.Audio } =
         DialogueScene.input(key, scene)
+
+    redef onMouseButtonPressed(button: GameEngine.MouseButton,
+                                position: Vec2.Vec2,
+                                scene: Scene[NodeTag]):
+                                Scene[NodeTag] \ { Dialogue.Session, GameEngine.Audio } =
+        if (Dialogue.Session.isActive()) checked_ecast(scene)
+        else checked_ecast(AreaEvent.dispatchClicks(button, position, scene))
+}
+
+/// 衝突応答ハンドラ。Phase 2 ではマウスクリック時に Hotspot タグの Area2D に着地した
+/// イベントだけを処理する（`onAreaEntered` / `onAreaExited` は使わずデフォルトのまま）。
+/// Hotspot は `RoomScene` が enter で配置する Area2D 1 個分のクリック対象。
+/// `HotspotData#roomId` と `HotspotData#hotspotId` から命名規約 `Hotspot_<>_<>` の
+/// yarn ノードを `Dialogue.Session.start` で起動する。
+instance AreaEvent.AreaHandler[NodeTag] {
+    type Aef = { Dialogue.Session }
+
+    pub def onAreaEntered(_selfPath: NodePath, _selfState: NodeTag,
+                           _otherPath: NodePath, _otherState: NodeTag,
+                           scene: Scene[NodeTag]): Scene[NodeTag] \ Dialogue.Session =
+        checked_ecast(scene)
+
+    redef onAreaClicked(_selfPath: NodePath, selfState: NodeTag,
+                         _button: GameEngine.MouseButton, _position: Vec2.Vec2,
+                         scene: Scene[NodeTag]): Scene[NodeTag] \ Dialogue.Session =
+        match selfState {
+            case NodeTag.Hotspot(data) =>
+                Dialogue.Session.start(RoomScene.yarnNodeNameFor(data#roomId, data#hotspotId));
+                scene
+            case _ => checked_ecast(scene)
+        }
 }
 
 mod Game {
@@ -50,12 +92,16 @@ mod Game {
     // ════════════════════════════════════════════════════════════════════════
 
     /// デザイン解像度（ロジック側の基準）。
-    pub def designWi(): Int32 = 320
-    pub def designHi(): Int32 = 240
+    /// 16:10 アスペクト比は Steam Deck (1280×800 ネイティブ) を主軸に、
+    /// ROG Ally (1920×1080 16:9) でも上下にわずかな黒帯で収まる選択。
+    pub def designWi(): Int32 = 480
+    pub def designHi(): Int32 = 300
 
-    /// 初期ウィンドウサイズ（OS ピクセル）。
-    pub def windowWi(): Int32 = 960
-    pub def windowHi(): Int32 = 720
+    /// 初期ウィンドウサイズ（OS ピクセル）。design × 3 (= 1440×900) で
+    /// 一般的なノート PC ディスプレイに収まるサイズ。整数スケールで pixel art の
+    /// シャープさを保つ。
+    pub def windowWi(): Int32 = 1440
+    pub def windowHi(): Int32 = 900
 
     // ════════════════════════════════════════════════════════════════════════
     // fixture 読み込み
@@ -87,6 +133,7 @@ mod Game {
                     Scene[NodeTag] \ {GameEngine.Game, Fs.FileRead} =
         Scene.empty()
             |> WorldScene.addWorldLayers
+            |> RoomScene.addRoomLayer
             |> DialogueScene.addDialogueLayer(fontAtlas, boldFontAtlas)
 
     // ════════════════════════════════════════════════════════════════════════
@@ -116,6 +163,9 @@ mod Game {
                 gameLoop(fontAtlas, boldFontAtlas, buildScene(fontAtlas, boldFontAtlas))
             } with Editor.withState(rc)
               with Dialogue.withDialog(yarnProject)
+              with Game.YarnBuiltinExtension.withGameBuiltins
+              with Game.Inventory.withState(rc)
+              with Game.RoomState.withState(rc)
               with Game.ShakeState.withState(rc)
               with Game.AudioFader.withState(rc)
               with Game.CommandWaitQueue.withState(rc)
@@ -140,6 +190,7 @@ mod Game {
                           Game.CommandWaitQueue.Access,
                           Game.ShakeState.Access,
                           Game.AudioFader.Access,
+                          Game.RoomState.Access,
                           IO, Chan, NonDet} =
         if (GameEngine.Game.shouldClose()
             or GameEngine.Game.isKeyPressed(GameEngine.Key.Escape)) ()

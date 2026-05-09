@@ -522,7 +522,8 @@ mod Dialogue {
                          a \ (ef - Session - DialogueView - CommandRegistry
                                  - Yarn.VariableAccess
                                  - Dialogue.SceneView.Inbox
-                                 - Dialogue.SceneView.CommandInbox) =
+                                 - Dialogue.SceneView.CommandInbox)
+                              + Yarn.BuiltinExtension.Access =
         region rc {
             run body() with Dialogue.Runner.withRunner(rc, yarnProject)
                        with Dialogue.Commands.withAsyncOnly

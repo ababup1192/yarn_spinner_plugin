@@ -31,10 +31,13 @@ mod Yarn.Builtins {
 
     /// 関数名と引数列を受け取り結果値を返す。エラーメッセージは未対応関数や
     /// 引数の型・個数ミスの理由を含む。
+    /// エンジン同梱のハードコード builtin で名前が見つからなかった場合は
+    /// `Yarn.BuiltinExtension.Access.lookup` にフォールバックし、
+    /// ゲーム側で登録された関数（`inv_has` / `current_room` 等）を試す。
     pub def call(name: String,
                   arguments: List[Value],
                   storage: VariableStorage[r]):
-                  Result[String, Value] \ r =
+                  Result[String, Value] \ r + Yarn.BuiltinExtension.Access =
         match (name, arguments) {
             case ("visited", StringV(nodeName) :: Nil) =>
                 Ok(BoolV(visitedCountOf(nodeName, storage) > 0.0))
@@ -79,7 +82,11 @@ mod Yarn.Builtins {
                 Ok(BoolV(invFlagOf(itemId, storage)))
 
             case _ =>
-                Err("unknown or mistyped builtin: ${name} (${List.length(arguments)} args)")
+                match Yarn.BuiltinExtension.Access.lookup(name, arguments) {
+                    case Yarn.BuiltinExtension.LookupResult.Found(value) => Ok(value)
+                    case Yarn.BuiltinExtension.LookupResult.NotFound     =>
+                        Err("unknown or mistyped builtin: ${name} (${List.length(arguments)} args)")
+                }
         }
 
     /// 訪問カウンタ `$Yarn.Internal.Visiting.<nodeName>` を読む。未設定は 0 扱い。

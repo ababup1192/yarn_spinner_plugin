@@ -35,6 +35,7 @@ mod Game.CommandRouter {
                                 Game.CommandWaitQueue.Access,
                                 Game.ShakeState.Access,
                                 Game.AudioFader.Access,
+                                Game.RoomState.Access,
                                 Fs.FileRead,
                                 Fs.FileWrite,
                                 IO
@@ -54,7 +55,7 @@ mod Game.CommandRouter {
                      Scene[NodeTag] \ {
                        GameEngine.Audio, Dialogue.Session, Yarn.VariableAccess,
                        Game.CommandWaitQueue.Access, Game.ShakeState.Access,
-                       Game.AudioFader.Access,
+                       Game.AudioFader.Access, Game.RoomState.Access,
                        Fs.FileRead, Fs.FileWrite, IO
                      } =
         let (name, args) = Dialogue.CommandParser.parse(text);
@@ -116,6 +117,17 @@ mod Game.CommandRouter {
             // 背景: bg <name> [fade <sec>] — fade は未実装、即時切替のみ
             case ("bg", bgName :: _) =>
                 let next = WorldScene.setBackground(bgName, scene);
+                Dialogue.Session.submitCommandDone();
+                next
+            // 部屋遷移: room enter <id>
+            // RoomState の roomId とホットスポット状態テーブルを `RoomCatalog` の
+            // 初期値で再構築し、RoomScene の背景 Sprite + ホットスポット ColorRect も
+            // 差し替える。catalog に無い id でも `RoomScene.enter` 側で「空っぽ部屋」に
+            // 整合するので、yarn 側でクラッシュさせない。
+            case ("room", "enter" :: roomId :: _) =>
+                let initialHs = Game.RoomCatalog.initialHotspots(roomId);
+                Game.RoomState.Access.enter(roomId, initialHs);
+                let next = RoomScene.enter(roomId, scene);
                 Dialogue.Session.submitCommandDone();
                 next
             // キャラ: sprite show <name> [position|variant]

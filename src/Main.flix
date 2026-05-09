@@ -14,16 +14,15 @@ def main(): Unit \ {IO, Chan, NonDet} =
             // sprites/<name>.png を生成する。
             // ファイル名 char_gragon.png は素材のタイポだが、論理名 "char_dragon" で吸収。
             textureManifest =
-                ({ name = "bg_title",    path = "sprites/bg_title.png",    hasAlpha = false }: GameEngine.TextureEntry)
-                :: ({ name = "bg_dungeon",  path = "sprites/bg_dungeon.png",  hasAlpha = false }: GameEngine.TextureEntry)
-                :: ({ name = "bg_room",     path = "sprites/bg_room.png",     hasAlpha = false }: GameEngine.TextureEntry)
-                :: ({ name = "bg_room1",    path = "sprites/bg_room1.png",    hasAlpha = false }: GameEngine.TextureEntry)
-                :: ({ name = "bg_boss",     path = "sprites/bg_boss.png",     hasAlpha = false }: GameEngine.TextureEntry)
-                :: ({ name = "bg_ending",   path = "sprites/bg_ending.png",   hasAlpha = false }: GameEngine.TextureEntry)
-                :: ({ name = "bg_gameover", path = "sprites/bg_gameover.png", hasAlpha = false }: GameEngine.TextureEntry)
-                :: ({ name = "char_ou",     path = "sprites/char_ou.png",     hasAlpha = true  }: GameEngine.TextureEntry)
-                :: ({ name = "char_chest",  path = "sprites/char_chest.png",  hasAlpha = true  }: GameEngine.TextureEntry)
-                :: ({ name = "char_dragon", path = "sprites/char_gragon.png", hasAlpha = true  }: GameEngine.TextureEntry)
+                // 部屋背景 (480×300, 16:10)。`<<room enter <id>>>` で `RoomScene.applyBackground`
+                // が `bg_<id>` をテクスチャに差し替える。
+                ({ name = "bg_demo_room",  path = "sprites/bg_demo_room.png",  hasAlpha = false }: GameEngine.TextureEntry)
+                :: ({ name = "bg_demo_room2", path = "sprites/bg_demo_room2.png", hasAlpha = false }: GameEngine.TextureEntry)
+                // ホットスポット sprite。RoomCatalog.HotspotDef#size に揃えてリサイズ済み。
+                // RoomScene.addHotspotVisual が `sprite_<hotspotId>` をテクスチャに割当てる。
+                :: ({ name = "sprite_drawer", path = "sprites/sprite_drawer.png", hasAlpha = true  }: GameEngine.TextureEntry)
+                :: ({ name = "sprite_door",   path = "sprites/sprite_door.png",   hasAlpha = true  }: GameEngine.TextureEntry)
+                :: ({ name = "sprite_note",   path = "sprites/sprite_note.png",   hasAlpha = true  }: GameEngine.TextureEntry)
                 :: Nil,
             // PixelMplus10 は 10px 設計のドットフォント。bake サイズも 10 に揃える。
             // [b] タグ用に Bold バリアントを並列登録し、RichTextLabel が文字単位で

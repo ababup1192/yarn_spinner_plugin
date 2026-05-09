@@ -12,7 +12,7 @@
         0
       ],
       "size": [
-        288,
+        448,
         72
       ],
       "type": "ColorRect",
@@ -31,7 +31,7 @@
         3
       ],
       "size": [
-        282,
+        442,
         66
       ],
       "type": "ColorRect",
@@ -45,7 +45,7 @@
         9
       ],
       "size": [
-        270,
+        430,
         54
       ],
       "text": "",
@@ -60,7 +60,7 @@
         9
       ],
       "size": [
-        270,
+        430,
         54
       ],
       "text": "",
@@ -72,8 +72,8 @@
       "horizontalAlignment": "center",
       "name": "Indicator",
       "pos": [
-        144,
-        6E+1
+        224,
+        60
       ],
       "rotation": 0,
       "text": "",
@@ -85,7 +85,7 @@
   "name": "Dialogue",
   "pos": [
     16,
-    151
+    216
   ],
   "rotation": 0,
   "scale": [

@@ -28,7 +28,8 @@ mod Dialogue.Runner {
     /// body の中で `do Session.start("Start")` などが呼べるようになる。
     pub def withRunner(rc: Region[r], compiledProject: YarnProject, body: Unit -> a \ ef):
                         a \ (ef - Dialogue.Session - Yarn.VariableAccess)
-                          + Dialogue.DialogueView + Dialogue.CommandRegistry + r =
+                          + Dialogue.DialogueView + Dialogue.CommandRegistry
+                          + Yarn.BuiltinExtension.Access + r =
         let vmRef: Ref[Option[Yarn.VM.VM[r]], r] = Ref.fresh(rc, None);
         run body() with handler Yarn.VariableAccess {
 
@@ -79,7 +80,14 @@ mod Dialogue.Runner {
             }
 
             def isActive(resume) =
-                resume(Option.nonEmpty(Ref.get(vmRef)))
+                // VM が起動済みかつ currentNode を持つ (= まだ DialogueComplete に
+                // 到達していない) ときだけ active 扱いにする。VM が return/stop で
+                // currentNode を None にした後は idle として扱い、探索モードの
+                // クリック判定など外側の入力処理を許可する。
+                resume(match Ref.get(vmRef) {
+                    case None     => false
+                    case Some(vm) => Option.nonEmpty(Ref.get(vm#currentNode))
+                })
 
             def submitNext(resume) =
                 match Ref.get(vmRef) {
@@ -129,7 +137,8 @@ mod Dialogue.Runner {
     /// 行・選択肢・コマンドそれぞれに対応する DialogueView 操作を呼ぶ。
     /// VM の暴走を防ぐため最大ステップ数で打ち切る。
     def runUntilWaiting(vm: Yarn.VM.VM[r], compiledProject: YarnProject, remaining: Int32):
-                         Unit \ Dialogue.DialogueView + Dialogue.CommandRegistry + r =
+                         Unit \ Dialogue.DialogueView + Dialogue.CommandRegistry
+                              + Yarn.BuiltinExtension.Access + r =
         if (remaining <= 0)
             Dialogue.DialogueView.dialogueComplete()
         else

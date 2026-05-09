@@ -64,7 +64,9 @@ mod Yarn.VM {
         }
 
     /// 1 命令進める。
-    pub def step(vm: VM[r]): StepResult \ r =
+    /// `callFunc` 命令は `Yarn.Builtins.call` 経由で `Yarn.BuiltinExtension.Access`
+    /// を呼ぶ可能性があるため、step の effect chain にも含まれる。
+    pub def step(vm: VM[r]): StepResult \ r + Yarn.BuiltinExtension.Access =
         match Ref.get(vm#waitingState) {
             case Some(state) => stateToResult(state)
             case None        => stepInner(vm)
@@ -115,7 +117,7 @@ mod Yarn.VM {
             StepResult.WaitingCommand(text)
     }
 
-    def stepInner(vm: VM[r]): StepResult \ r =
+    def stepInner(vm: VM[r]): StepResult \ r + Yarn.BuiltinExtension.Access =
         match Ref.get(vm#currentNode) {
             case None           => StepResult.DialogueComplete
             case Some(nodeName) =>
@@ -125,7 +127,7 @@ mod Yarn.VM {
                 }
         }
 
-    def stepInNode(node: YarnNode, vm: VM[r]): StepResult \ r =
+    def stepInNode(node: YarnNode, vm: VM[r]): StepResult \ r + Yarn.BuiltinExtension.Access =
         let ip = Ref.get(vm#instructionPointer);
         match Vector.nth(ip, node#instructions) {
             case None              => StepResult.Failed(
@@ -135,7 +137,7 @@ mod Yarn.VM {
                 executeInstruction(instruction, vm)
         }
 
-    def executeInstruction(instruction: Instruction, vm: VM[r]): StepResult \ r =
+    def executeInstruction(instruction: Instruction, vm: VM[r]): StepResult \ r + Yarn.BuiltinExtension.Access =
         match instruction {
             case RunLine(lineRef, substitutionCount) =>
                 let substitutions = popSubstitutions(substitutionCount, vm);
@@ -285,7 +287,7 @@ mod Yarn.VM {
     /// `callFunc`: 直前の `pushFloat` で push された数値が引数の個数。
     /// その数値を pop し、その下から N 個 pop して引数列を作り、関数を呼ぶ。
     /// 結果はスタックに push する。
-    def executeCallFunc(name: String, vm: VM[r]): StepResult \ r =
+    def executeCallFunc(name: String, vm: VM[r]): StepResult \ r + Yarn.BuiltinExtension.Access =
         match MutDeque.popBack(vm#stack) {
             case Some(FloatV(countAsFloat)) =>
                 match Float64.tryToInt32(countAsFloat) {

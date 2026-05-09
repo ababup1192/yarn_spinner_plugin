@@ -10,14 +10,18 @@ mod TestDialogueRunner {
 
     // fixture は `TestYarnFixture.loadProject()` 経由でインライン取得する。
 
-    /// `withRecordingView + withWaitOnly + withRunner` を 1 つの run で連結する
-    /// effect-polymorphic ヘルパー。テスト本体は `Dialog` だけを使えばよい。
+    /// `withRecordingView + withWaitOnly + withRunner + withNoExtension` を 1 つの run で
+    /// 連結する effect-polymorphic ヘルパー。テスト本体は `Dialog` だけを使えばよい。
+    /// `Yarn.BuiltinExtension.Access` は VM `callFunc` の透過要求を満たすために常に
+    /// `withNoExtension` で握りつぶす（テストはゲーム拡張ビルトインを使わない前提）。
     def runWithStubs(rc: Region[r], compiledProject: YarnProject,
                       body: Unit -> Unit \ Dialogue.Session):
                       List[ViewEvent] \ r =
         let (_, log) = Dialogue.StubView.withRecordingView(rc, () -> {
             Dialogue.Commands.withWaitOnly(() -> {
-                Dialogue.Runner.withRunner(rc, compiledProject, body)
+                Yarn.BuiltinExtension.withNoExtension(() -> {
+                    Dialogue.Runner.withRunner(rc, compiledProject, body)
+                })
             })
         });
         log
