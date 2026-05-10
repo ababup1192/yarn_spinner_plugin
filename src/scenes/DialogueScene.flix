@@ -100,11 +100,11 @@ mod DialogueScene {
     // ════════════════════════════════════════════════════════════════════════
 
     /// 1 キー入力を対話 UI として解釈する。
-    ///   - 確定キー（Z/Space/Enter）:
-    ///       * choices モード → tap → `submitSelect`
-    ///       * typewriter 途中 → tap → `forceFullReveal`
-    ///       * `shouldShowNextIndicator` のとき → tap → 手動 `submitNext`
-    ///       * それ以外（auto-next 中・transition 中など） → 無視
+    ///   - 確定キー（Z/Space/Enter）: `Dialogue.confirmAction(state)` の 4 分岐に委ねる
+    ///       * `SelectChoice(i)` → tap → `submitSelect(i)`
+    ///       * `ForceFullReveal` → tap → typewriter 一気出し
+    ///       * `AdvanceLine`     → tap → `submitNext`
+    ///       * `Ignore`          → 何もしない（auto-next 中・transition 中など）
     ///   - 上 (Up/W): カーソル -1
     ///   - 下 (Down/S): カーソル +1
     /// 表示中（visible=true）でないキーは黙って無視する。
@@ -120,18 +120,20 @@ mod DialogueScene {
             let isUp = key == GameEngine.Key.Up or key == GameEngine.Key.W;
             let isDown = key == GameEngine.Key.Down or key == GameEngine.Key.S;
             if (isConfirm) {
-                if (not List.isEmpty(state#choices)) {
-                    GameEngine.Audio.playAudio("tap");
-                    Dialogue.Session.submitSelect(state#cursor);
-                    scene
-                } else if (not Dialogue.isPanelFullyRevealed(state)) {
-                    GameEngine.Audio.playAudio("tap");
-                    mapState(s -> Dialogue.forceFullReveal(s), scene)
-                } else if (Dialogue.shouldShowNextIndicator(state)) {
-                    GameEngine.Audio.playAudio("tap");
-                    Dialogue.Session.submitNext();
-                    scene
-                } else scene
+                match Dialogue.confirmAction(state) {
+                    case Dialogue.ConfirmAction.Ignore => scene
+                    case Dialogue.ConfirmAction.SelectChoice(i) =>
+                        GameEngine.Audio.playAudio("tap");
+                        Dialogue.Session.submitSelect(i);
+                        scene
+                    case Dialogue.ConfirmAction.ForceFullReveal =>
+                        GameEngine.Audio.playAudio("tap");
+                        mapState(s -> Dialogue.forceFullReveal(s), scene)
+                    case Dialogue.ConfirmAction.AdvanceLine =>
+                        GameEngine.Audio.playAudio("tap");
+                        Dialogue.Session.submitNext();
+                        scene
+                }
             } else if (isUp)
                 mapState(s -> Dialogue.moveCursor(-1, s), scene)
             else if (isDown)
@@ -140,25 +142,19 @@ mod DialogueScene {
         }
 
     /// レイヤノードの `process` ライフサイクル。
-    /// 1. `Inbox.takeAll` で 1 フレーム分のイベントを取り出し、`Dialogue.applyFrame`
-    ///    で状態に反映する（applyEvent 畳み込み + tick(delta) を一括）
-    /// 2. lines が増えたフレーム（新しい行が表示開始）で talk 効果音を鳴らす
-    /// 3. 継続 line の typewriter 完了などで `shouldAutoNext` が立っていれば
-    ///    `Session.submitNext` を発火（次フレームの takeAll で取り込まれる）
-    /// 4. 新しい layer ノードと、本文 / transition / インジケータを更新した scene を返す
+    /// 1. `Dialogue.processFrame` で `Inbox.takeAll → applyFrame → 必要なら submitNext`
+    ///    を一括実行し、(newState, addedLines) を取り出す
+    /// 2. addedLines > 0 のフレーム（新しい行が表示開始）で talk SE を鳴らす
+    /// 3. 新しい layer ノードと、本文 / transition / インジケータを更新した scene を返す
     pub def process(delta: Duration.Duration,
                      layer: CanvasLayer,
                      state: Dialogue.UIState,
                      scene: Scene[NodeTag]):
                      (EngineNode[NodeTag], Scene[NodeTag])
                      \ {Dialogue.SceneView.Inbox, Dialogue.Session, GameEngine.Audio} =
-        let events = Dialogue.SceneView.Inbox.takeAll();
-        let newState = Dialogue.applyFrame(delta, events, state);
+        let (newState, addedLines) = Dialogue.processFrame(delta, state);
         // 行が新しく追加されたフレームで talk SE を頭から再生（自然減衰で勝手に止まる）
-        if (List.length(newState#lines) > List.length(state#lines))
-            GameEngine.Audio.playAudio("talk")
-        else ();
-        if (Dialogue.shouldAutoNext(newState)) Dialogue.Session.submitNext() else ();
+        if (addedLines > 0) GameEngine.Audio.playAudio("talk") else ();
         let newLayer = CanvasItem.setVisible(newState#visible, layer);
         let newNode = EngineNode.CanvasLayerWithState(newLayer, NodeTag.Dialogue(newState));
         let newScene =

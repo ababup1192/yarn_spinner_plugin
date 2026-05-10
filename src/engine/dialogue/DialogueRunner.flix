@@ -8,8 +8,11 @@
 /// まで step を回す」を担う。
 ///
 /// `withRunner` はゲームロジック（`Dialog` を `do` する側）から見ると Dialog を
-/// 提供する handler。プレゼンター（`DialogueView`）と CommandRegistry は
-/// 上流で別途 handler を積んでおく必要がある。
+/// 提供する handler。プレゼンター（`DialogueView`）は上流で別途 handler を積む。
+///
+/// `commandsAreSynchronous` で `<<command>>` を即完了させるか外部完了通知を待つかを
+/// 切替える。本番（gameLoop で CommandInbox を処理する）は `false`。テスト
+/// （直接 Runner を駆動する）は `true`。
 mod Dialogue.Runner {
     use Yarn.Types.YarnProject
     use Yarn.Types.Value
@@ -24,11 +27,17 @@ mod Dialogue.Runner {
     def maxStepsPerSubmit(): Int32 = 1000
 
     /// `Session` effect を実装する handler。
-    /// 呼び出し元は `region rc { withRunner(rc, compiledProject, () -> ...) ... }` で使う。
+    /// 呼び出し元は `region rc { withRunner(rc, compiledProject, syncCommands, () -> ...) ... }` で使う。
     /// body の中で `do Session.start("Start")` などが呼べるようになる。
-    pub def withRunner(rc: Region[r], compiledProject: YarnProject, body: Unit -> a \ ef):
+    ///
+    /// `syncCommands = true` で `<<command>>` を即完了扱い（外部 `submitCommandDone`
+    /// を待たない）。テストで gameLoop なしに Runner を直接駆動する場合に使う。
+    /// 本番は `false`。コマンドは `DialogueView.runCommand` で view 側に積まれ、
+    /// 外部ルータが完了タイミングで `Session.submitCommandDone` を呼ぶ。
+    pub def withRunner(rc: Region[r], compiledProject: YarnProject,
+                        syncCommands: Bool, body: Unit -> a \ ef):
                         a \ (ef - Dialogue.Session - Yarn.VariableAccess)
-                          + Dialogue.DialogueView + Dialogue.CommandRegistry
+                          + Dialogue.DialogueView
                           + Yarn.BuiltinExtension.Access + r =
         let vmRef: Ref[Option[Yarn.VM.VM[r]], r] = Ref.fresh(rc, None);
         run body() with handler Yarn.VariableAccess {
@@ -69,7 +78,7 @@ mod Dialogue.Runner {
             def start(nodeName, resume) = {
                 let vm = Yarn.VM.init(rc, compiledProject, nodeName);
                 Ref.put(Some(vm), vmRef);
-                runUntilWaiting(vm, compiledProject, maxStepsPerSubmit());
+                runUntilWaiting(vm, compiledProject, syncCommands, maxStepsPerSubmit());
                 resume()
             }
 
@@ -93,7 +102,7 @@ mod Dialogue.Runner {
                 match Ref.get(vmRef) {
                     case Some(vm) => {
                         Yarn.VM.next(vm);
-                        runUntilWaiting(vm, compiledProject, maxStepsPerSubmit());
+                        runUntilWaiting(vm, compiledProject, syncCommands, maxStepsPerSubmit());
                         resume()
                     }
                     case None => resume()
@@ -103,7 +112,7 @@ mod Dialogue.Runner {
                 match Ref.get(vmRef) {
                     case Some(vm) => {
                         Yarn.VM.selectChoice(choiceIndex, vm);
-                        runUntilWaiting(vm, compiledProject, maxStepsPerSubmit());
+                        runUntilWaiting(vm, compiledProject, syncCommands, maxStepsPerSubmit());
                         resume()
                     }
                     case None => resume()
@@ -113,7 +122,7 @@ mod Dialogue.Runner {
                 match Ref.get(vmRef) {
                     case Some(vm) => {
                         Yarn.VM.commandComplete(vm);
-                        runUntilWaiting(vm, compiledProject, maxStepsPerSubmit());
+                        runUntilWaiting(vm, compiledProject, syncCommands, maxStepsPerSubmit());
                         resume()
                     }
                     case None => resume()
@@ -128,7 +137,7 @@ mod Dialogue.Runner {
                     Yarn.VariableStorage.set(name, value, vm#variables),
                     variables);
                 Ref.put(Some(vm), vmRef);
-                runUntilWaiting(vm, compiledProject, maxStepsPerSubmit());
+                runUntilWaiting(vm, compiledProject, syncCommands, maxStepsPerSubmit());
                 resume()
             }
         }
@@ -136,15 +145,17 @@ mod Dialogue.Runner {
     /// VM を 1 つの Waiting* / DialogueComplete に到達するまで step し続ける。
     /// 行・選択肢・コマンドそれぞれに対応する DialogueView 操作を呼ぶ。
     /// VM の暴走を防ぐため最大ステップ数で打ち切る。
-    def runUntilWaiting(vm: Yarn.VM.VM[r], compiledProject: YarnProject, remaining: Int32):
-                         Unit \ Dialogue.DialogueView + Dialogue.CommandRegistry
+    /// `syncCommands = true` のときは `<<command>>` を即完了扱いにして次の命令へ進める。
+    def runUntilWaiting(vm: Yarn.VM.VM[r], compiledProject: YarnProject,
+                         syncCommands: Bool, remaining: Int32):
+                         Unit \ Dialogue.DialogueView
                               + Yarn.BuiltinExtension.Access + r =
         if (remaining <= 0)
             Dialogue.DialogueView.dialogueComplete()
         else
             match Yarn.VM.step(vm) {
-                case Running          => runUntilWaiting(vm, compiledProject, remaining - 1)
-                case NodeComplete     => runUntilWaiting(vm, compiledProject, remaining - 1)
+                case Running          => runUntilWaiting(vm, compiledProject, syncCommands, remaining - 1)
+                case NodeComplete     => runUntilWaiting(vm, compiledProject, syncCommands, remaining - 1)
                 case WaitingLine(lineId, substitutions) =>
                     let line = resolveLine(lineId, substitutions, compiledProject);
                     Dialogue.DialogueView.presentLine(line)
@@ -153,10 +164,9 @@ mod Dialogue.Runner {
                     Dialogue.DialogueView.presentChoices(choices)
                 case WaitingCommand(commandText) => {
                     Dialogue.DialogueView.runCommand(commandText);
-                    let synchronous = Dialogue.CommandRegistry.dispatch(commandText);
-                    if (synchronous) {
+                    if (syncCommands) {
                         Yarn.VM.commandComplete(vm);
-                        runUntilWaiting(vm, compiledProject, remaining - 1)
+                        runUntilWaiting(vm, compiledProject, syncCommands, remaining - 1)
                     } else ()
                 }
                 case DialogueComplete =>

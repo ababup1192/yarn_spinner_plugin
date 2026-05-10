@@ -37,3 +37,32 @@ mod Dialogue.StubView {
         };
         (result, MutDeque.toList(log))
 }
+
+/// テスト用 facade。本番 `Dialogue.withDialog` と対称な「3 段 handler を 1 行で」の
+/// テスト版。`Dialogue.Session` を提供し、view 操作は `ViewEvent` の List として返す。
+///
+/// 本番との差:
+///   - DialogueView は `StubView.withRecordingView`（log に蓄積）
+///   - `<<command>>` は同期完了扱い（`Dialogue.Runner.withRunner` の syncCommands=true）
+///   - 拡張 builtin は `Yarn.BuiltinExtension.withNoExtension` で握りつぶす
+///
+/// テスト本体は `body` 内で `Dialogue.Session.start` などを呼ぶだけで良い。
+mod Dialogue.Test {
+    use Yarn.Types.YarnProject
+    use Dialogue.ViewEvent
+
+    /// 1 つの `region rc` 内で stub view + sync runner + no-extension を被せ、body 実行後の
+    /// イベントログを返す。`runWithStubs` の置き換え。
+    pub def withTestDialog(rc: Region[r], compiledProject: YarnProject,
+                            body: Unit -> a \ ef):
+                            (a, List[ViewEvent]) \ (ef - Dialogue.Session
+                                                       - Dialogue.DialogueView
+                                                       - Yarn.VariableAccess
+                                                       - Yarn.BuiltinExtension.Access)
+                                                  + r =
+        Dialogue.StubView.withRecordingView(rc, () -> {
+            Yarn.BuiltinExtension.withNoExtension(() -> {
+                Dialogue.Runner.withRunner(rc, compiledProject, true, body)
+            })
+        })
+}

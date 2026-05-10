@@ -2,14 +2,14 @@
 ///
 /// 提供するもの:
 ///
-///   - 3 つの effect: `Session` / `DialogueView` / `CommandRegistry`
+///   - 2 つの effect: `Session` / `DialogueView`
 ///   - view 用の整形済み型: `PresentedLine` / `PresentedChoice`
 ///   - 1 フレーム単位で受け渡す view イベント: `ViewEvent`
 ///   - 対話 UI の論理状態: `UIState` と、その純粋遷移（`applyEvent` /
 ///     `moveCursor` / `emptyState`）と表示用整形（`formatBody`）
 ///   - ジャンルごとのリズム・寸法をまとめた `DialogueProfile` と既製 profile
 ///     （`jrpgProfile` / `visualNovelProfile`）
-///   - facade `withDialog`（Runner / WaitOnly / SceneView を 1 行で適用）
+///   - facade `withDialog`（Runner / SceneView を 1 行で適用）
 ///
 /// 描画やノード木の知識は持たないので、別の Scene 実装に差し替えても再利用できる。
 /// JRPG / VN / その他の表現スタイルの違いは `DialogueProfile` の値で吸収する。
@@ -67,11 +67,16 @@ mod Dialogue {
         case Complete
     }
 
-    /// 古い行のスクロール / フェード演出。`progress` は 0.0 → 1.0 で進む。
-    /// `oldLines` は演出開始時のパネルに表示されていた行列を保持する。
+    /// 古い行のスクロール / フェード演出 + 完了時に流す保留イベントのペア。
+    /// `progress` は 0.0 → 1.0 で進む。`oldLines` は演出開始時のパネルに
+    /// 表示されていた行列。`pendingEvent` は演出が終わってから `applyEventInner`
+    /// で実反映される 1 件のイベント（= 演出中は次の文章を出さないというゲート）。
+    /// `transition` が `None` のときはこのペアごと存在しないので、Scene 側は
+    /// `transitionView(state)` から `oldLines` と `progress` を見ればよい。
     pub type alias Transition = {
-        oldLines = List[LineText],
-        progress = Float64
+        oldLines     = List[LineText],
+        progress     = Float64,
+        pendingEvent = ViewEvent
     }
 
     /// ジャンルごとの「対話リズム・寸法」をまとめた値。
@@ -127,9 +132,8 @@ mod Dialogue {
     /// 設計:
     ///   - `lines` は同じ話者の発話を `profile#maxLinesPerPanel` まで蓄積する（古→新）
     ///   - `profile#breakOnSpeakerLine` が true の場合、名前 prefix 付き Line は新パネル化扱い：
-    ///     - 旧 lines を `transition` に退避してスクロールアウトする
-    ///     - 適用したいイベント本体は `pendingEvent` に保留しておき、transition が
-    ///       完了してから `applyEventInner` で実際に反映する
+    ///     - 旧 lines + 完了時に流すイベントを `transition` に退避し、スクロールアウトする
+    ///     - 演出完了時に `applyEventInner` で実反映する
     ///       （= 演出が終わるまで次の文章は出さない）
     ///   - 上限超え / Options / Complete も同じく新パネル化扱い
     ///   - 名前なし継続 Line のあとは `lastLineHadName = false`。typewriter 完了時に
@@ -145,8 +149,7 @@ mod Dialogue {
         revealProgress  = Float64,             // パネル全体の typewriter 進捗（文字数累積）
         elapsed         = Duration.Duration,   // 表示中の経過時間（点滅用）
         lastLineHadName = Bool,                // 最新 line に名前 prefix が付いていたか
-        transition      = Option[Transition],  // 直前パネルのスクロール演出
-        pendingEvent    = Option[ViewEvent],   // transition 完了後に適用するイベント
+        transition      = Option[Transition],  // 直前パネルのスクロール演出 + 完了時の保留イベント
         profile         = DialogueProfile      // ジャンルごとのリズム・寸法
     }
 
@@ -165,7 +168,6 @@ mod Dialogue {
         elapsed = Duration.zero(),
         lastLineHadName = false,
         transition = None,
-        pendingEvent = None,
         profile = profile
     }
 
@@ -182,8 +184,8 @@ mod Dialogue {
         }
 
     /// 1 件の `ViewEvent` を状態に反映する純粋関数。
-    /// `eventStartsNewPanel` が真なら旧 lines を transition に退避し、イベント本体は
-    /// `pendingEvent` に保留する（transition 完了後に `applyEventInner` で適用）。
+    /// `eventStartsNewPanel` が真なら旧 lines + イベント本体を `transition` に
+    /// 退避する（演出完了時に `applyEventInner` で適用）。
     /// 偽なら直ちに `applyEventInner` で反映する。
     pub def applyEvent(event: ViewEvent, state: UIState): UIState =
         if (eventStartsNewPanel(event, state))
@@ -205,11 +207,14 @@ mod Dialogue {
             case ViewEvent.Command(_) => false
         }
 
-    /// 旧 lines を transition に退避し、イベント適用を transition 完了まで保留する。
+    /// 旧 lines + 完了時イベントを transition に退避し、適用を演出完了まで保留する。
+    /// transition 進行中に新イベントが来た場合は、進捗（`progress` / `oldLines`）は
+    /// 保持しつつ `pendingEvent` だけ最新で上書きする（既存挙動と同じ）。
     def beginPanelTransition(event: ViewEvent, state: UIState): UIState =
-        let nextTransition =
-            if (Option.nonEmpty(state#transition)) state#transition
-            else Some({ oldLines = state#lines, progress = 0.0 });
+        let nextTransition: Transition = match state#transition {
+            case Some(t) => { pendingEvent = event | t }
+            case None    => { oldLines = state#lines, progress = 0.0, pendingEvent = event }
+        };
         { speaker = state#speaker,
            lines = Nil,
            choices = Nil,
@@ -218,13 +223,12 @@ mod Dialogue {
            revealProgress = 0.0,
            elapsed = state#elapsed,
            lastLineHadName = state#lastLineHadName,
-           transition = nextTransition,
-           pendingEvent = Some(event),
+           transition = Some(nextTransition),
            profile = state#profile }
 
     /// transition を伴わない実適用ロジック。
     /// `applyEvent` 直接呼び出し（lines 空 / 継続 line / Dismiss / Command）と、
-    /// `tickTransition` 完了後の `pendingEvent` 反映の両方から呼ばれる。
+    /// `tickTransition` 完了時の保留イベント反映の両方から呼ばれる。
     def applyEventInner(event: ViewEvent, state: UIState): UIState =
         match event {
             case ViewEvent.Line(text, speaker) => acceptLineInner(text, speaker, state)
@@ -236,7 +240,7 @@ mod Dialogue {
         }
 
     /// transition なしで Line を反映する。lines 空なら新規行として、非空なら append として扱う。
-    /// （新パネルが必要な状況は `applyEvent` 側で `pendingEvent` に逃がしている）
+    /// （新パネルが必要な状況は `applyEvent` 側で `transition` の `pendingEvent` に逃がしている）
     def acceptLineInner(text: LineText, speaker: Option[SpeakerName], state: UIState): UIState =
         let hasName = Option.nonEmpty(speaker);
         if (List.isEmpty(state#lines))
@@ -250,7 +254,6 @@ mod Dialogue {
                elapsed = state#elapsed,
                lastLineHadName = hasName,
                transition = state#transition,
-               pendingEvent = None,
                profile = state#profile }
         else
             // 継続 line（名前なし & 上限内）。typewriter は連続のまま。
@@ -263,7 +266,6 @@ mod Dialogue {
                elapsed = state#elapsed,
                lastLineHadName = false,
                transition = state#transition,
-               pendingEvent = None,
                profile = state#profile }
 
     /// transition なしで Choices を反映する。
@@ -277,7 +279,6 @@ mod Dialogue {
            elapsed = state#elapsed,
            lastLineHadName = false,
            transition = state#transition,
-           pendingEvent = None,
            profile = state#profile }
 
     /// `delta` だけカーソルを動かした状態を返す。
@@ -309,6 +310,20 @@ mod Dialogue {
         List.foldLeft((s, event) -> applyEvent(event, s), state, events)
             |> tick(delta)
 
+    /// 1 フレーム分の標準処理を 1 関数で実行する副作用版ヘルパ。
+    ///   1. `Dialogue.SceneView.Inbox.takeAll` で 1 フレーム分のイベントを取り出す
+    ///   2. `applyFrame(delta, events, state)` で状態に畳み込み + tick
+    ///   3. `shouldAutoNext(newState)` が true なら `Dialogue.Session.submitNext()` を呼ぶ
+    /// 戻り値は `(newState, addedLineCount)`。`addedLineCount > 0` のフレームは新しい行が
+    /// 表示開始されたフレームなので、トーク SE などの演出トリガに使える。
+    pub def processFrame(delta: Duration.Duration, state: UIState):
+                          (UIState, Int32) \ Dialogue.SceneView.Inbox + Dialogue.Session =
+        let events = Dialogue.SceneView.Inbox.takeAll();
+        let newState = applyFrame(delta, events, state);
+        if (shouldAutoNext(newState)) Dialogue.Session.submitNext() else ();
+        let added = List.length(newState#lines) - List.length(state#lines);
+        (newState, Int32.max(0, added))
+
     /// 表示中の経過時間を進める。点滅などのアニメーションに使う。
     def tickElapsed(delta: Duration.Duration, state: UIState): UIState =
         if (not state#visible) state
@@ -334,8 +349,8 @@ mod Dialogue {
         }
 
     /// transition の `progress` を進め、1.0 を超えたら `None` に戻す。
-    /// ちょうど完了したフレームで `pendingEvent` を `applyEventInner` で反映する
-    /// （= 演出が終わるまで次の文章は出さないというゲート）。
+    /// ちょうど完了したフレームで保留イベント（`transition#pendingEvent`）を
+    /// `applyEventInner` で反映する（= 演出が終わるまで次の文章は出さないというゲート）。
     def tickTransition(delta: Duration.Duration, state: UIState): UIState =
         match state#transition {
             case None => state
@@ -344,11 +359,7 @@ mod Dialogue {
                     transition#progress + Duration.toSeconds(delta) / Duration.toSeconds(state#profile#transitionDuration);
                 if (advanced >= 1.0) {
                     let cleared = { transition = None | state };
-                    match state#pendingEvent {
-                        case None => cleared
-                        case Some(event) =>
-                            applyEventInner(event, { pendingEvent = None | cleared })
-                    }
+                    applyEventInner(transition#pendingEvent, cleared)
                 } else {
                     let updated: Transition = { progress = advanced | transition };
                     { transition = Some(updated) | state }
@@ -407,11 +418,11 @@ mod Dialogue {
         state#transition
 
     /// パネル全体が typewriter 完了 + 入出力待ちが何も無い状態かどうか（共通プレディケート）。
+    /// `transition` が `None` の時点で保留イベントも無いので、Option を 1 つ確認すれば足りる。
     def isPanelIdle(state: UIState): Bool =
         state#visible
             and List.isEmpty(state#choices)
             and Option.isEmpty(state#transition)
-            and Option.isEmpty(state#pendingEvent)
             and isPanelFullyRevealed(state)
             and not List.isEmpty(state#lines)
 
@@ -441,6 +452,31 @@ mod Dialogue {
                 |> Float64.tryToInt32
                 |> Option.getWithDefault(0);
         Int32.modulo(cycles, 2) == 0
+
+    /// 確定キー（決定ボタン）が押されたときに、現在の `UIState` から導かれる
+    /// アクション。Scene 側は `match Dialogue.confirmAction(state) { ... }` で
+    /// 4 ケースに振り分ければよく、`isPanelFullyRevealed` / `shouldShowNextIndicator` /
+    /// `choices` などの低水準述語の優先順位を Scene が再発明する必要がなくなる。
+    pub enum ConfirmAction with Eq, ToString {
+        /// 何もしない（非表示・transition 中・auto-next 待ち など）。
+        case Ignore
+        /// typewriter 進行中。`forceFullReveal` で残り文字を一気に出す。
+        case ForceFullReveal
+        /// 選択肢提示中。同梱の `cursor` で `Session.submitSelect` を呼ぶ。
+        case SelectChoice(Int32)
+        /// ▼ 待ち中。`Session.submitNext` で次の行へ。
+        case AdvanceLine
+    }
+
+    /// 現在の `UIState` を見て、確定キーで取るべき `ConfirmAction` を返す。
+    /// 優先順位は (1) 非表示なら無視、(2) 選択肢中なら確定、(3) typewriter 進行中なら一気出し、
+    /// (4) ▼ 待ちなら次行送り、(5) それ以外（auto-next 中・transition 中など）は無視。
+    pub def confirmAction(state: UIState): ConfirmAction =
+        if (not state#visible) ConfirmAction.Ignore
+        else if (not List.isEmpty(state#choices)) ConfirmAction.SelectChoice(state#cursor)
+        else if (not isPanelFullyRevealed(state)) ConfirmAction.ForceFullReveal
+        else if (shouldShowNextIndicator(state)) ConfirmAction.AdvanceLine
+        else ConfirmAction.Ignore
 
     // ════════════════════════════════════════════════════════════════════════
     // effects
@@ -492,70 +528,30 @@ mod Dialogue {
         def dialogueComplete(): Unit
     }
 
-    /// Yarn コマンド `runCommand` の文字列を実処理に振り分ける層。
-    /// `dispatch` は「同期で完了したら true、非同期で進行中なら false」を返す。
-    /// true を返した場合はランナーが続けて `Yarn.VM.commandComplete` を呼ぶ。
-    /// false を返した場合はエンジン側が完了タイミングで `Session.submitCommandDone`
-    /// を呼ぶことで対話を再開させる。
-    pub eff CommandRegistry {
-        /// 指定したコマンド名のハンドラを登録する。
-        /// 戻り値は同期完了か。`withWaitOnly` 実装は登録を無視する。
-        def register(name: String, action: List[String] -> Bool): Unit
-
-        /// "wait 0.5" のようなコマンド行を実行する。同期完了なら true。
-        def dispatch(commandLine: String): Bool
-    }
-
     // ════════════════════════════════════════════════════════════════════════
     // facade — 対話 handler 一式を 1 行で適用する
     // ════════════════════════════════════════════════════════════════════════
 
-    /// `Runner` / `WaitOnly` / `SceneView`（DialogueView + Inbox）を 1 つにまとめた
+    /// `Runner` / `SceneView`（DialogueView + Inbox + CommandInbox）を 1 つにまとめた
     /// facade。region と event queue を内部に閉じ込めるため、呼び出し側は
     /// scene 構築・入力・gameLoop だけに集中できる。
     ///
     /// `body` 内で `Dialogue.Session.start` などを呼ぶと、view 側のイベントは
     /// `Dialogue.SceneView.Inbox.takeAll` 経由で取り出せる（Scene 側の `process`
     /// で消化する想定）。
+    ///
+    /// 本番用は `<<command>>` を非同期扱いにする（コマンドは `CommandInbox` 経由で
+    /// gameLoop 側ルータが処理し、完了タイミングで `Session.submitCommandDone` を呼ぶ）。
+    /// テスト用に同期完了させたい場合は `Dialogue.Test.withTestDialog` を使う。
     pub def withDialog(yarnProject: Yarn.Types.YarnProject,
                         body: Unit -> a \ ef):
-                         a \ (ef - Session - DialogueView - CommandRegistry
+                         a \ (ef - Session - DialogueView
                                  - Yarn.VariableAccess
                                  - Dialogue.SceneView.Inbox
                                  - Dialogue.SceneView.CommandInbox)
                               + Yarn.BuiltinExtension.Access =
         region rc {
-            run body() with Dialogue.Runner.withRunner(rc, yarnProject)
-                       with Dialogue.Commands.withAsyncOnly
+            run body() with Dialogue.Runner.withRunner(rc, yarnProject, false)
                        with Dialogue.SceneView.withSceneView(rc)
-        }
-}
-
-mod Dialogue.Commands {
-
-    /// すべてのコマンドを「非同期完了」として扱う handler（本番用）。
-    /// dispatch は常に false を返すので、ランナーは外部からの
-    /// `Session.submitCommandDone` を待機する。
-    ///
-    /// 実コマンド処理は Inbox 経由で gameLoop 側 (`Game.CommandRouter.processCommands`)
-    /// に委ねる。`SceneView` の `runCommand` ハンドラが `ViewEvent.Command(text)` を
-    /// 既にキューに積んでいるので、CommandRegistry には登録機構を持たせず常に async で
-    /// 受け流す（register は no-op）。
-    pub def withAsyncOnly(body: Unit -> a \ ef):
-                           a \ (ef - Dialogue.CommandRegistry) =
-        run body() with handler Dialogue.CommandRegistry {
-            def register(_name, _action, resume) = resume()
-            def dispatch(_commandLine, resume)   = resume(false)
-        }
-
-    /// すべてのコマンドを「即時同期完了」として扱う handler（テスト用）。
-    /// テストで gameLoop を回さず DialogueRunner を直接駆動する場合、async にすると
-    /// VM がコマンドで永久停止してしまうため、dispatch を true 固定にして
-    /// runner が自分で次の命令へ進めるようにする。
-    pub def withWaitOnly(body: Unit -> a \ ef):
-                          a \ (ef - Dialogue.CommandRegistry) =
-        run body() with handler Dialogue.CommandRegistry {
-            def register(_name, _action, resume) = resume()
-            def dispatch(_commandLine, resume)   = resume(true)
         }
 }

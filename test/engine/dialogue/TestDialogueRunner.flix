@@ -1,30 +1,13 @@
-/// `Dialogue.Runner.withRunner` が 3 段 handler 連結（withRecordingView +
-/// withWaitOnly + withRunner）の中で正しく動くことを確認するテスト。
+/// `Dialogue.Runner.withRunner` が `Dialogue.Test.withTestDialog` の中で
+/// 正しく動くことを確認するテスト。
 ///
 /// 純粋層の VM 動作は `TestYarnScenario` で保証済み。ここでは「effect 層が
 /// それを下流に正しく仲介すること」だけを検証する。
 mod TestDialogueRunner {
-    use Yarn.Types.YarnProject
-    use Dialogue.{ViewEvent}
+    use Dialogue.ViewEvent
     use Dialogue.ViewEvent.{Line, Choices, Command, Complete}
 
     // fixture は `TestYarnFixture.loadProject()` 経由でインライン取得する。
-
-    /// `withRecordingView + withWaitOnly + withRunner + withNoExtension` を 1 つの run で
-    /// 連結する effect-polymorphic ヘルパー。テスト本体は `Dialog` だけを使えばよい。
-    /// `Yarn.BuiltinExtension.Access` は VM `callFunc` の透過要求を満たすために常に
-    /// `withNoExtension` で握りつぶす（テストはゲーム拡張ビルトインを使わない前提）。
-    def runWithStubs(rc: Region[r], compiledProject: YarnProject,
-                      body: Unit -> Unit \ Dialogue.Session):
-                      List[ViewEvent] \ r =
-        let (_, log) = Dialogue.StubView.withRecordingView(rc, () -> {
-            Dialogue.Commands.withWaitOnly(() -> {
-                Yarn.BuiltinExtension.withNoExtension(() -> {
-                    Dialogue.Runner.withRunner(rc, compiledProject, body)
-                })
-            })
-        });
-        log
 
     // ========================================================================
     // start → 「はい」確定 → 完走までのイベント列
@@ -37,7 +20,7 @@ mod TestDialogueRunner {
     def testYesChoiceFlowsThroughView(): Unit \ Assert =
         let compiledProject = TestYarnFixture.loadProject();
         let events = region rc {
-            runWithStubs(rc, compiledProject, () -> {
+            let (_, log) = Dialogue.Test.withTestDialog(rc, compiledProject, () -> {
                 Dialogue.Session.start("Start");          // → presentLine(おう: ゆうしゃよ…)
                 Dialogue.Session.submitNext();         // → presentLine(まおうを…)
                 Dialogue.Session.submitNext();         // → presentChoices([はい, いいえ])
@@ -46,7 +29,8 @@ mod TestDialogueRunner {
                 Dialogue.Session.submitNext();         // → runCommand("wait 0.5") → 自動完了
                                                           //   → presentLine(たびだちじゃ)
                 Dialogue.Session.submitNext()           // → dialogueComplete
-            })
+            });
+            log
         };
         let speaker = Some("おう");
         let expected: List[ViewEvent] =
@@ -71,13 +55,14 @@ mod TestDialogueRunner {
     def testNoChoiceRecursesToStart(): Unit \ Assert =
         let compiledProject = TestYarnFixture.loadProject();
         let events = region rc {
-            runWithStubs(rc, compiledProject, () -> {
+            let (_, log) = Dialogue.Test.withTestDialog(rc, compiledProject, () -> {
                 Dialogue.Session.start("Start");          // → presentLine(おう: ゆうしゃよ)
                 Dialogue.Session.submitNext();         // → presentLine(まおうを)
                 Dialogue.Session.submitNext();         // → presentChoices
                 Dialogue.Session.submitSelect(1);         // → presentLine(なさけないやつめ)
                 Dialogue.Session.submitNext()           // → 再帰 → presentLine(ゆうしゃよ 2 度目)
-            })
+            });
+            log
         };
         // 5 イベント目（index=4）が 1 度目と同じ「ゆうしゃよ…」になっているか
         let firstAndFifth = (List.nth(0, events), List.nth(4, events));
