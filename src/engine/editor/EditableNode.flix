@@ -157,7 +157,39 @@ mod EditableNode {
                             RichTextLabel.setSize(newSize, label), st)
                     case None => engineNode
                 }
+            case EngineNode.Area2DWithState(area, st) =>
+                match snapshot#prevShape {
+                    case Some(prev) =>
+                        let newShape = scaleCollisionShape(prev, ratio);
+                        EngineNode.Area2DWithState(
+                            Area2D.setCollisionShape(Some(newShape), area), st)
+                    case None => engineNode
+                }
             case _ => engineNode
+        }
+
+    /// CollisionShape2D を `ratio` で拡縮する。
+    /// - Rect: width / height をそれぞれ非対称にスケール
+    /// - Circle: radius は等方なので min(ratio.x, ratio.y) を採用
+    /// - Capsule: radius は min ratio、height は vertical 軸に合わせて
+    def scaleCollisionShape(shape: CollisionShape2D, ratio: Vec2.Vec2): CollisionShape2D =
+        match shape {
+            case CollisionShape2D.RectShape2D(r) =>
+                CollisionShape2D.RectShape2D({
+                    width  = r#width  * ratio#x,
+                    height = r#height * ratio#y
+                })
+            case CollisionShape2D.CircleShape2D(c) =>
+                let uniform = Float64.min(ratio#x, ratio#y);
+                CollisionShape2D.CircleShape2D({radius = c#radius * uniform})
+            case CollisionShape2D.CapsuleShape2D(c) =>
+                let uniform = Float64.min(ratio#x, ratio#y);
+                let heightRatio = if (c#vertical) ratio#y else ratio#x;
+                CollisionShape2D.CapsuleShape2D({
+                    radius = c#radius * uniform,
+                    height = c#height * heightRatio,
+                    vertical = c#vertical
+                })
         }
 
     /// ノード型に応じて JSON 書き戻しに必要な FieldUpdate のリストを返す。
@@ -186,6 +218,13 @@ mod EditableNode {
             case EngineNode.RichTextLabelWithState(label, _) =>
                 {key = "size",
                  value = SceneSerializer.FieldValue.VecValue(RichTextLabel.getSize(label))} :: Nil
+            case EngineNode.Area2DWithState(area, _) =>
+                match CollisionObject2D.getCollisionShape(area) {
+                    case Some(shape) =>
+                        {key = "shape",
+                         value = SceneSerializer.FieldValue.ShapeValue(shape)} :: Nil
+                    case None => Nil
+                }
             case _ => Nil
         }
 
@@ -194,9 +233,10 @@ mod EditableNode {
     pub type alias NodeResizeSnapshot = {
         nodePath = NodePath,
         prevPosition = Vec2.Vec2,
-        prevSize = Option[Vec2.Vec2],          // ColorRect / TextureButton 用
+        prevSize = Option[Vec2.Vec2],          // ColorRect / TextureButton / RichTextLabel 用
         prevFontSize = Option[Float64],         // Label2D 用
-        prevScale = Option[Vec2.Vec2]           // Sprite2D / AnimatedSprite2D 用
+        prevScale = Option[Vec2.Vec2],          // Sprite2D / AnimatedSprite2D 用
+        prevShape = Option[CollisionShape2D]    // Area2D 用 (CollisionShape2D の幾何)
     }
 
     /// ノードの現在状態を NodeResizeSnapshot にスナップショットする
@@ -207,36 +247,45 @@ mod EditableNode {
             case EngineNode.ColorRectWithState(rect, _) => {
                 nodePath = nodePath, prevPosition = prevPos,
                 prevSize = Some(ColorRect.getSize(rect)),
-                prevFontSize = None, prevScale = None
+                prevFontSize = None, prevScale = None, prevShape = None
             }
             case EngineNode.Label2DWithState(label, _) => {
                 nodePath = nodePath, prevPosition = prevPos,
                 prevSize = None,
-                prevFontSize = Some(Label2D.getFontSize(label)), prevScale = None
+                prevFontSize = Some(Label2D.getFontSize(label)),
+                prevScale = None, prevShape = None
             }
             case EngineNode.Sprite2DWithState(sprite, _) => {
                 nodePath = nodePath, prevPosition = prevPos,
                 prevSize = None, prevFontSize = None,
-                prevScale = Some(Node2D.getScale(sprite))
+                prevScale = Some(Node2D.getScale(sprite)),
+                prevShape = None
             }
             case EngineNode.AnimSprite2DWithState(sprite, _) => {
                 nodePath = nodePath, prevPosition = prevPos,
                 prevSize = None, prevFontSize = None,
-                prevScale = Some(Node2D.getScale(sprite))
+                prevScale = Some(Node2D.getScale(sprite)),
+                prevShape = None
             }
             case EngineNode.TextureButtonWithState(btn, _) => {
                 nodePath = nodePath, prevPosition = prevPos,
                 prevSize = Some(TextureButton.getSize(btn)),
-                prevFontSize = None, prevScale = None
+                prevFontSize = None, prevScale = None, prevShape = None
             }
             case EngineNode.RichTextLabelWithState(label, _) => {
                 nodePath = nodePath, prevPosition = prevPos,
                 prevSize = Some(RichTextLabel.getSize(label)),
-                prevFontSize = None, prevScale = None
+                prevFontSize = None, prevScale = None, prevShape = None
+            }
+            case EngineNode.Area2DWithState(area, _) => {
+                nodePath = nodePath, prevPosition = prevPos,
+                prevSize = None, prevFontSize = None, prevScale = None,
+                prevShape = CollisionObject2D.getCollisionShape(area)
             }
             case _ => {
                 nodePath = nodePath, prevPosition = prevPos,
-                prevSize = None, prevFontSize = None, prevScale = None
+                prevSize = None, prevFontSize = None, prevScale = None,
+                prevShape = None
             }
         }
 
@@ -288,6 +337,14 @@ mod EditableNode {
                                 |> Node2D.setPosition(snapshot#prevPosition), st)
                     case None => withPos
                 }
+            case EngineNode.Area2DWithState(area, st) =>
+                match snapshot#prevShape {
+                    case Some(shape) =>
+                        EngineNode.Area2DWithState(
+                            Area2D.setCollisionShape(Some(shape), area)
+                                |> Node2D.setPosition(snapshot#prevPosition), st)
+                    case None => withPos
+                }
             case _ => withPos
         }
 
@@ -315,10 +372,18 @@ mod EditableNode {
                 : SceneSerializer.FieldUpdate) :: Nil
             case None     => Nil
         };
-        posUpd :: sizeUpds ++ fontSizeUpds ++ scaleUpds
+        let shapeUpds = match snapshot#prevShape {
+            case Some(shape) => ({key = "shape",
+                value = SceneSerializer.FieldValue.ShapeValue(shape)}
+                : SceneSerializer.FieldUpdate) :: Nil
+            case None        => Nil
+        };
+        posUpd :: sizeUpds ++ fontSizeUpds ++ scaleUpds ++ shapeUpds
 
     /// ノードの表示サイズと topLeftOffset を返す（編集対象でなければ None）。
     /// CanvasLayer は子の bbox の和集合で計算するため scene と path も受け取る。
+    /// Area2D は CollisionShape2D の bbox を出して、エディタで位置・サイズを
+    /// 直接ドラッグできるようにする (Marker2D + collision の代わり)。
     def rectInfoOf(engineNode: EngineNode[NodeTag], path: NodePath, scene: Scene[NodeTag]):
             Option[{size = Vec2.Vec2, topLeftOffset = Vec2.Vec2}] \ GameEngine.Game =
         match engineNode {
@@ -329,7 +394,39 @@ mod EditableNode {
             case EngineNode.ColorRectWithState(rect, _) => Some(colorRectRectInfo(rect))
             case EngineNode.RichTextLabelWithState(label, _) => Some(richTextLabelRectInfo(label))
             case EngineNode.CanvasLayerWithState(_, _) => canvasLayerRectInfo(path, scene)
+            case EngineNode.Area2DWithState(area, _) => area2dRectInfo(area)
             case _ => None
+        }
+
+    /// Area2D の表示矩形は `collisionShape` の bbox。
+    /// Area2D の position は中心なので topLeftOffset は -size/2。
+    /// shape が None / Capsule (bbox 取れない) は None を返してエディタで非選択。
+    def area2dRectInfo(area: Area2D):
+            Option[{size = Vec2.Vec2, topLeftOffset = Vec2.Vec2}] =
+        match CollisionObject2D.getCollisionShape(area) {
+            case None        => None
+            case Some(shape) => collisionShapeRectInfo(shape)
+        }
+
+    /// CollisionShape2D を矩形 bbox に変換する。中心原点なので offset は -size/2。
+    def collisionShapeRectInfo(shape: CollisionShape2D):
+            Option[{size = Vec2.Vec2, topLeftOffset = Vec2.Vec2}] =
+        match shape {
+            case CollisionShape2D.RectShape2D(r) =>
+                let size: Vec2.Vec2 = {x = r#width, y = r#height};
+                Some({size = size,
+                      topLeftOffset = ({x = -size#x / 2.0, y = -size#y / 2.0}: Vec2.Vec2)})
+            case CollisionShape2D.CircleShape2D(c) =>
+                let d = c#radius * 2.0;
+                let size: Vec2.Vec2 = {x = d, y = d};
+                Some({size = size,
+                      topLeftOffset = ({x = -size#x / 2.0, y = -size#y / 2.0}: Vec2.Vec2)})
+            case CollisionShape2D.CapsuleShape2D(c) =>
+                let size: Vec2.Vec2 =
+                    if (c#vertical) {x = c#radius * 2.0, y = c#height}
+                    else            {x = c#height, y = c#radius * 2.0};
+                Some({size = size,
+                      topLeftOffset = ({x = -size#x / 2.0, y = -size#y / 2.0}: Vec2.Vec2)})
         }
 
     /// RichTextLabel の表示矩形は内蔵の `size` フィールド（描画領域）。
@@ -363,6 +460,7 @@ mod EditableNode {
 
     /// CanvasLayer の bbox 計算用に、子ノード（CanvasLayer 以外）の bbox を取り出す。
     /// 入れ子の CanvasLayer は再帰しない（深い hierarchies は素直にそのまま）。
+    /// Area2D も含めて Layer 全体の選択範囲に寄与させる。
     def childRectInfoLocal(engineNode: EngineNode[NodeTag]):
             Option[{size = Vec2.Vec2, topLeftOffset = Vec2.Vec2}] \ GameEngine.Game =
         match engineNode {
@@ -372,6 +470,7 @@ mod EditableNode {
             case EngineNode.Label2DWithState(label, _) => Some(labelRectInfo(label))
             case EngineNode.ColorRectWithState(rect, _) => Some(colorRectRectInfo(rect))
             case EngineNode.RichTextLabelWithState(label, _) => Some(richTextLabelRectInfo(label))
+            case EngineNode.Area2DWithState(area, _) => area2dRectInfo(area)
             case _ => None
         }
 

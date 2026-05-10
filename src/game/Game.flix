@@ -14,49 +14,68 @@
 /// Room レイヤは `RoomScene.Data`（現在の roomId）を持つ。
 /// Hotspot は Area2D 1 個分のクリック対象で、`HotspotData` に部屋 id とホットスポット id を
 /// 持って `AreaHandler.onAreaClicked` で yarn ノードを起動する。
+/// Inventory レイヤは `InventoryScene.Data` (placeholder) を持ち、`process` で
+/// `Game.Inventory.Access` の snapshot を scene tree に同期する。
 pub enum NodeTag {
     case NoTag
     case Dialogue(Dialogue.UIState)
     case Room(RoomScene.Data)
     case Hotspot(RoomScene.HotspotData)
+    case Inventory(InventoryScene.Data)
 }
 
-/// Node 実装。Dialogue レイヤの `process` を `DialogueScene.process` に委譲する。
-/// `process` 内で auto-next が `Session.submitNext` を、新行検知が
-/// `GameEngine.Audio.playAudio` を発火するため Aef は 3 つ必要。
+/// Node 実装。
+///   - Dialogue レイヤ: `DialogueScene.process` に委譲 (auto-next / talk SE 等)
+///   - Inventory レイヤ: `InventoryScene.process` に委譲 (Inventory.Access snapshot を
+///     scene tree のアイコン Sprite + ハイライトに同期)
+/// 各 redef は trait の Aef = (Dialogue.* + GameEngine.Audio + Inventory.Access) に
+/// 揃える必要があるので `checked_ecast` でキャストアップする。
 instance Node[NodeTag] {
-    type Aef = { Dialogue.SceneView.Inbox, Dialogue.Session, GameEngine.Audio }
+    type Aef = { Dialogue.SceneView.Inbox, Dialogue.Session, GameEngine.Audio,
+                 Game.Inventory.Access }
 
     redef process(delta: Duration.Duration, node: EngineNode[NodeTag],
                    _path: NodePath, scene: Scene[NodeTag]):
                     (EngineNode[NodeTag], Scene[NodeTag])
-                    \ {Dialogue.SceneView.Inbox, Dialogue.Session, GameEngine.Audio} =
+                    \ {Dialogue.SceneView.Inbox, Dialogue.Session, GameEngine.Audio,
+                       Game.Inventory.Access} =
         match node {
             case EngineNode.CanvasLayerWithState(layer, NodeTag.Dialogue(state)) =>
-                DialogueScene.process(delta, layer, state, scene)
+                checked_ecast(DialogueScene.process(delta, layer, state, scene))
+            case EngineNode.CanvasLayerWithState(layer, NodeTag.Inventory(data)) =>
+                let nextScene = InventoryScene.process(layer, data, scene);
+                checked_ecast((node, nextScene))
             case _ => (node, scene)
         }
 }
 
 /// 入力ハンドラ。
 /// 確定キーで tap SE を鳴らすため `GameEngine.Audio`、マウスクリックの伝播先である
-/// AreaHandler が `Dialogue.Session` を要求するため `Aef` に同包。
-/// 各 redef の body はこのうち一部しか使わないので `checked_ecast` で trait Aef
-/// に揃える。
-/// マウスクリックは「探索モード（Yarn idle）」のみ `AreaEvent.dispatchClicks` に流す。
-/// 対話モード中のクリックは無視する。
+/// AreaHandler が `Dialogue.Session`、インベントリ選択で `Game.Inventory.Access` を要求するため
+/// `Aef` に同包。各 redef の body はこのうち一部しか使わないので `checked_ecast` で
+/// trait Aef に揃える。
+///
+/// マウスクリックは:
+///   1. 対話モード中 (Yarn busy)            → 何もしない
+///   2. クリックがインベントリバー領域内      → InventoryScene.onClick (スロット選択切替)
+///   3. それ以外 (探索モードかつ室内クリック)  → AreaEvent.dispatchClicks (ホットスポット起動)
+/// の優先順で処理する。
 instance InputEvent.InputHandler[NodeTag] {
-    type Aef = { Dialogue.Session, GameEngine.Audio }
+    type Aef = { Dialogue.Session, GameEngine.Audio, Game.Inventory.Access }
 
     redef onKeyPressed(key: GameEngine.Key, scene: Scene[NodeTag]):
-                        Scene[NodeTag] \ { Dialogue.Session, GameEngine.Audio } =
-        DialogueScene.input(key, scene)
+                        Scene[NodeTag] \ { Dialogue.Session, GameEngine.Audio,
+                                            Game.Inventory.Access } =
+        checked_ecast(DialogueScene.input(key, scene))
 
     redef onMouseButtonPressed(button: GameEngine.MouseButton,
                                 position: Vec2.Vec2,
                                 scene: Scene[NodeTag]):
-                                Scene[NodeTag] \ { Dialogue.Session, GameEngine.Audio } =
+                                Scene[NodeTag] \ { Dialogue.Session, GameEngine.Audio,
+                                                    Game.Inventory.Access } =
         if (Dialogue.Session.isActive()) checked_ecast(scene)
+        else if (InventoryScene.containsPoint(position))
+            checked_ecast(InventoryScene.onClick(position, scene))
         else checked_ecast(AreaEvent.dispatchClicks(button, position, scene))
 }
 
@@ -134,6 +153,7 @@ mod Game {
         Scene.empty()
             |> WorldScene.addWorldLayers
             |> RoomScene.addRoomLayer
+            |> InventoryScene.addInventoryLayer
             |> DialogueScene.addDialogueLayer(fontAtlas, boldFontAtlas)
 
     // ════════════════════════════════════════════════════════════════════════
@@ -191,6 +211,7 @@ mod Game {
                           Game.ShakeState.Access,
                           Game.AudioFader.Access,
                           Game.RoomState.Access,
+                          Game.Inventory.Access,
                           IO, Chan, NonDet} =
         if (GameEngine.Game.shouldClose()
             or GameEngine.Game.isKeyPressed(GameEngine.Key.Escape)) ()
@@ -223,10 +244,18 @@ mod Game {
             // （scene.json のデフォルト）のままになって会話が消えて見える。
             let next =
                 if (Editor.pollReload()) {
+                    // Dialogue 状態は会話進行を切らさないために preserve する。
+                    // Room 状態 (現在の roomId) は `RoomState.Access` の Ref に
+                    // 残っているので、buildScene 後に `RoomScene.enter` を再適用
+                    // して背景 visible とホットスポット Area2D を復元する。
+                    // これがないと scene.json の Bg は `visible: false` 初期値に
+                    // 戻ってしまい、画面真っ黒に見える。
                     let preservedState = DialogueScene.getState(afterShake);
+                    let preservedRoomId = Game.RoomState.currentRoom();
                     buildScene(fontAtlas, boldFontAtlas)
                         |> DialogueScene.mapState(_ -> preservedState)
                         |> DialogueScene.syncDisplay(preservedState)
+                        |> RoomScene.enter(preservedRoomId)
                 }
                 else afterShake;
             // (5) エディタオーバーレイ → 描画

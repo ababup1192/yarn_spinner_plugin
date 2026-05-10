@@ -5,10 +5,23 @@ title: Start
 
 title: Hotspot_demo_room_drawer
 ---
-引き出しを 開けてみた。中は からっぽだ。
+<<if not inv_has("demo_key")>>
+    引き出しの 中に かぎが あった。
+    <<inv add demo_key>>
+<<else>>
+    引き出しは からっぽだ。
+<<endif>>
 ===
 
 title: Hotspot_demo_room_door
 ---
-ドアは ロックされている。
+<<if not is_locked("door")>>
+    ドアは 既に 開いている。
+<<elseif inv_selected() == "demo_key">>
+    かぎを 使った。ドアが 開いた。
+    <<inv remove demo_key>>
+    <<hotspot unlock door>>
+<<else>>
+    ドアは ロックされている。
+<<endif>>
 ===

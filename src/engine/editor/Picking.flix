@@ -11,11 +11,11 @@
 mod Picking {
 
     /// 与えられた候補の中からマウス位置にヒットするものを 1 件返す。
-    /// 通常モードでは、ヒットしたノードの中に CanvasLayer のような「コンテナ」が
-    /// 含まれていれば、そのコンテナを最優先で返す（ダイアログウィンドウ全体を
-    /// 1 単位として動かしたいケースに合わせる）。
-    /// `preferDescendant = true` のときは従来どおり z-index 最大のノードを返す
-    /// （Shift+クリックで子要素を細かく選びたいケース）。
+    /// 通常モードでは **z-index 最大のノード (= 最前面の子要素)** を返す。
+    /// 各 hotspot や個別 sprite を直接ドラッグできる「Godot 流儀」のデフォルト。
+    /// `preferDescendant = true` (Shift+クリック) は **コンテナ (CanvasLayer)** に
+    /// 切り替え、ダイアログパネル等を 1 単位で動かしたいケースに合わせる。
+    /// (パラメータ名は歴史的経緯でこの意味のまま残してあるが、振る舞いは反転している)
     pub def pickTopAt(mousePos: Vec2.Vec2,
                       entries: List[EditableNode.EditableEntry],
                       transform: Camera2D.ViewTransform,
@@ -25,13 +25,16 @@ mod Picking {
         let hits = entries
             |> List.filterMap(entry -> hitInfo(mousePos, entry, transform, scene));
         let chosen = if (preferDescendant)
-            highestZ(hits)
-        else
-            // コンテナがあれば最も浅い（root に近い）コンテナを優先。
-            // 無ければ z-index 最大のノードへフォールバック
+            // 修飾キー押下時はコンテナ優先 (旧デフォルト)。
             match shallowestContainer(hits) {
                 case Some(hit) => Some(hit)
                 case None      => highestZ(hits)
+            }
+        else
+            // 通常クリックは葉 (非コンテナ) を優先、なければコンテナにフォールバック。
+            match highestZ(hits |> List.filter(h -> not h#entry#isContainer)) {
+                case Some(hit) => Some(hit)
+                case None      => shallowestContainer(hits)
             };
         Option.map(hit -> (hit#entry, hit#screenPos), chosen)
 

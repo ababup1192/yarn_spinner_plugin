@@ -14,6 +14,11 @@
 ///   - `Number.GreaterThanOrEqualTo(a, b)` -> Bool
 ///   - `Number.LessThan(a, b)`             -> Bool
 ///   - `Number.LessThanOrEqualTo(a, b)`    -> Bool
+///   - `String.EqualTo(a, b)`              -> Bool   文字列等価 (`<<if x == "y">>`)
+///   - `String.NotEqualTo(a, b)`           -> Bool
+///   - `String.Add(a, b)`                  -> String 文字列連結
+///   - `Bool.EqualTo(a, b)`                -> Bool
+///   - `Bool.NotEqualTo(a, b)`             -> Bool
 ///   - `Bool.And(a, b)`                    -> Bool
 ///   - `Bool.Or(a, b)`                     -> Bool
 ///   - `Bool.Not(a)`                       -> Bool
@@ -68,6 +73,21 @@ mod Yarn.Builtins {
 
             case ("Number.LessThanOrEqualTo", FloatV(a) :: FloatV(b) :: Nil) =>
                 Ok(BoolV(a <= b))
+
+            case ("String.EqualTo", StringV(a) :: StringV(b) :: Nil) =>
+                Ok(BoolV(a == b))
+
+            case ("String.NotEqualTo", StringV(a) :: StringV(b) :: Nil) =>
+                Ok(BoolV(a != b))
+
+            case ("String.Add", StringV(a) :: StringV(b) :: Nil) =>
+                Ok(StringV(a + b))
+
+            case ("Bool.EqualTo", BoolV(a) :: BoolV(b) :: Nil) =>
+                Ok(BoolV(a == b))
+
+            case ("Bool.NotEqualTo", BoolV(a) :: BoolV(b) :: Nil) =>
+                Ok(BoolV(a != b))
 
             case ("Bool.And", BoolV(a) :: BoolV(b) :: Nil) =>
                 Ok(BoolV(a and b))

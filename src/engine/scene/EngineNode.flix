@@ -132,6 +132,12 @@ mod EngineNode {
         case _ => node
     }
 
+    /// ColorRect の inner node に関数を適用する（他バリアントは変更なし）
+    pub def mapColorRect(f: ColorRect -> ColorRect, node: EngineNode[s]): EngineNode[s] = match node {
+        case EngineNode.ColorRectWithState(inner, st) => EngineNode.ColorRectWithState(f(inner), st)
+        case _ => node
+    }
+
     /// AnimatedSprite2D の inner node に関数を適用する
     pub def mapAnimSprite2D(f: AnimatedSprite2D -> AnimatedSprite2D, node: EngineNode[s]): EngineNode[s] = match node {
         case EngineNode.AnimSprite2DWithState(inner, st) => EngineNode.AnimSprite2DWithState(f(inner), st)

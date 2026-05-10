@@ -16,13 +16,11 @@ def main(): Unit \ {IO, Chan, NonDet} =
             textureManifest =
                 // 部屋背景 (480×300, 16:10)。`<<room enter <id>>>` で `RoomScene.applyBackground`
                 // が `bg_<id>` をテクスチャに差し替える。
+                // ホットスポット (drawer / door 等) は背景画像内に絵として描き込み済みなので
+                // 個別の sprite は持たない。クリック判定だけ Area2D + CollisionShape2D で配置する。
                 ({ name = "bg_demo_room",  path = "sprites/bg_demo_room.png",  hasAlpha = false }: GameEngine.TextureEntry)
-                :: ({ name = "bg_demo_room2", path = "sprites/bg_demo_room2.png", hasAlpha = false }: GameEngine.TextureEntry)
-                // ホットスポット sprite。RoomCatalog.HotspotDef#size に揃えてリサイズ済み。
-                // RoomScene.addHotspotVisual が `sprite_<hotspotId>` をテクスチャに割当てる。
-                :: ({ name = "sprite_drawer", path = "sprites/sprite_drawer.png", hasAlpha = true  }: GameEngine.TextureEntry)
-                :: ({ name = "sprite_door",   path = "sprites/sprite_door.png",   hasAlpha = true  }: GameEngine.TextureEntry)
-                :: ({ name = "sprite_note",   path = "sprites/sprite_note.png",   hasAlpha = true  }: GameEngine.TextureEntry)
+                // インベントリアイコン。InventoryScene が `icon_<itemId>` で参照する。
+                :: ({ name = "icon_demo_key", path = "sprites/icon_demo_key.png", hasAlpha = true }: GameEngine.TextureEntry)
                 :: Nil,
             // PixelMplus10 は 10px 設計のドットフォント。bake サイズも 10 に揃える。
             // [b] タグ用に Bold バリアントを並列登録し、RichTextLabel が文字単位で

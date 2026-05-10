@@ -1,19 +1,61 @@
 {
-  "type": "CanvasLayer",
-  "name": "Room",
-  "layer": 5,
-  "pos": [0, 0],
-  "rotation": 0,
-  "scale": [1, 1],
   "children": [
     {
-      "type": "Sprite2D",
-      "name": "Bg",
-      "pos": [240, 150],
-      "scale": [1, 1],
-      "texture": "",
       "centered": true,
+      "name": "Bg",
+      "pos": [
+        240,
+        150
+      ],
+      "scale": [
+        1,
+        1
+      ],
+      "texture": "",
+      "type": "Sprite2D",
       "visible": false
+    },
+    {
+      "monitoring": true,
+      "name": "Hotspot_drawer",
+      "pos": [
+        116,
+        216
+      ],
+      "shape": {
+        "height": 79.40494791666674,
+        "kind": "RectShape2D",
+        "width": 70.22526041666663
+      },
+      "tag": "Hotspot:drawer",
+      "type": "Area2D"
+    },
+    {
+      "monitoring": true,
+      "name": "Hotspot_door",
+      "pos": [
+        363,
+        184
+      ],
+      "shape": {
+        "height": 136.26692708333331,
+        "kind": "RectShape2D",
+        "width": 53.798177083333314
+      },
+      "tag": "Hotspot:door",
+      "type": "Area2D"
     }
-  ]
+  ],
+  "layer": 5,
+  "name": "Room",
+  "pos": [
+    0,
+    0
+  ],
+  "rotation": 0,
+  "scale": [
+    1,
+    1
+  ],
+  "type": "CanvasLayer"
 }

@@ -17,10 +17,14 @@ mod SceneSerializer {
     use Json.JsonElement
     use Json.JsonElement.{JsonObject, JsonArray, JsonNumber}
 
-    /// 書き換え値の種類。Vec2 は `[x, y]` の JSON 配列、Scalar は単一数値
+    /// 書き換え値の種類。
+    /// - VecValue:   `[x, y]` の JSON 配列
+    /// - ScalarValue: 単一数値
+    /// - ShapeValue:  CollisionShape2D を `{"kind": ..., ...}` の JSON オブジェクトに変換 (Area2D shape 用)
     pub enum FieldValue {
         case VecValue(Vec2.Vec2)
         case ScalarValue(Float64)
+        case ShapeValue(CollisionShape2D)
     }
 
     /// 書き換え対象 1 件: フィールド名 + 上書きする値
@@ -216,6 +220,33 @@ mod SceneSerializer {
                 })
             case FieldValue.ScalarValue(f) =>
                 JsonNumber(floatToBd(f))
+            case FieldValue.ShapeValue(shape) =>
+                shapeToJson(shape)
+        }
+
+    /// CollisionShape2D を scene.json の `"shape"` フィールドの形式に変換する。
+    /// `{"kind": "RectShape2D", "width": ..., "height": ...}` の規約に揃える。
+    def shapeToJson(shape: CollisionShape2D): JsonElement =
+        use Json.JsonElement.{JsonString, JsonBool};
+        match shape {
+            case CollisionShape2D.RectShape2D(r) =>
+                JsonObject(Map#{
+                    "kind"   => JsonString("RectShape2D"),
+                    "width"  => JsonNumber(floatToBd(r#width)),
+                    "height" => JsonNumber(floatToBd(r#height))
+                })
+            case CollisionShape2D.CircleShape2D(c) =>
+                JsonObject(Map#{
+                    "kind"   => JsonString("CircleShape2D"),
+                    "radius" => JsonNumber(floatToBd(c#radius))
+                })
+            case CollisionShape2D.CapsuleShape2D(c) =>
+                JsonObject(Map#{
+                    "kind"     => JsonString("CapsuleShape2D"),
+                    "radius"   => JsonNumber(floatToBd(c#radius)),
+                    "height"   => JsonNumber(floatToBd(c#height)),
+                    "vertical" => JsonBool(c#vertical)
+                })
         }
 
     /// Float64 を BigDecimal に変換する。整数値の場合は trailing zero を取り除き

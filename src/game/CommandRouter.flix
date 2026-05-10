@@ -36,6 +36,7 @@ mod Game.CommandRouter {
                                 Game.ShakeState.Access,
                                 Game.AudioFader.Access,
                                 Game.RoomState.Access,
+                                Game.Inventory.Access,
                                 Fs.FileRead,
                                 Fs.FileWrite,
                                 IO
@@ -56,6 +57,7 @@ mod Game.CommandRouter {
                        GameEngine.Audio, Dialogue.Session, Yarn.VariableAccess,
                        Game.CommandWaitQueue.Access, Game.ShakeState.Access,
                        Game.AudioFader.Access, Game.RoomState.Access,
+                       Game.Inventory.Access,
                        Fs.FileRead, Fs.FileWrite, IO
                      } =
         let (name, args) = Dialogue.CommandParser.parse(text);
@@ -105,13 +107,15 @@ mod Game.CommandRouter {
                 Yarn.VariableAccess.setBool("\$flag_${flagName}", false);
                 Dialogue.Session.submitCommandDone();
                 scene
-            // インベントリ: item add <id> / item remove <id>
-            case ("item", "add" :: itemId :: _) =>
-                Yarn.VariableAccess.setBool("\$inv_${itemId}", true);
+            // インベントリ: inv add <id> / inv remove <id>
+            // `Game.Inventory.Access` を SoT として更新する。`inv_has(id)` ビルトインは
+            // Game.YarnBuiltinExtension が同じ Access から読むので一貫する。
+            case ("inv", "add" :: itemId :: _) =>
+                Game.Inventory.Access.add(itemId);
                 Dialogue.Session.submitCommandDone();
                 scene
-            case ("item", "remove" :: itemId :: _) =>
-                Yarn.VariableAccess.setBool("\$inv_${itemId}", false);
+            case ("inv", "remove" :: itemId :: _) =>
+                Game.Inventory.Access.remove(itemId);
                 Dialogue.Session.submitCommandDone();
                 scene
             // 背景: bg <name> [fade <sec>] — fade は未実装、即時切替のみ
@@ -130,6 +134,11 @@ mod Game.CommandRouter {
                 let next = RoomScene.enter(roomId, scene);
                 Dialogue.Session.submitCommandDone();
                 next
+            // ホットスポット状態操作: hotspot {lock|unlock|show|hide} <id>
+            // 詳細は `dispatchHotspot` に委譲（dispatchOne の JVM メソッドサイズ制限対策）。
+            case ("hotspot", action :: hotspotId :: _) =>
+                dispatchHotspot(action, hotspotId);
+                scene
             // キャラ: sprite show <name> [position|variant]
             // 2 引数目（center / open / closed 等）は当面無視。
             case ("sprite", "show" :: spriteName :: _) =>
@@ -202,6 +211,20 @@ mod Game.CommandRouter {
                 Dialogue.Session.submitCommandDone();
                 scene
         }
+
+    /// `<<hotspot {lock|unlock|show|hide} <id>>>` を RoomState に反映する。
+    /// 共通の `submitCommandDone` 発火もこの中で行う（呼び出し側は scene を返すだけ）。
+    /// 不明な action はログに出して完了通知を返す（story を止めない）。
+    def dispatchHotspot(action: String, hotspotId: String):
+            Unit \ {Dialogue.Session, Game.RoomState.Access, IO} =
+        match action {
+            case "unlock" => Game.RoomState.Access.setLocked(hotspotId, false)
+            case "lock"   => Game.RoomState.Access.setLocked(hotspotId, true)
+            case "show"   => Game.RoomState.Access.setVisible(hotspotId, true)
+            case "hide"   => Game.RoomState.Access.setVisible(hotspotId, false)
+            case other    => println("[CommandRouter] unknown hotspot action: ${other}")
+        };
+        Dialogue.Session.submitCommandDone()
 
     /// `count` 回 `submitCommandDone` を呼ぶ。WaitQueue の期限切れ通知用。
     def completeMany(count: Int32): Unit \ Dialogue.Session =

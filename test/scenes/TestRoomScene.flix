@@ -18,15 +18,35 @@ mod TestRoomScene {
     /// handler が Ref にイベント順で push する。
     type alias StartLog[r: Region] = Ref[List[String], r]
 
-    /// Room レイヤだけを手で積んだ Scene を作る。
-    /// scene.json を経由しないので I/O effect 不要。
-    /// レイヤは drawLayer = 5 / NodeTag.Room(emptyData) で初期化する。
+    /// Room レイヤと scene.json 相当のホットスポット (drawer / door) を手で積んだ
+    /// Scene を作る。scene.json を経由しないので I/O effect 不要。
+    /// 本番フロー (`addRoomLayer` + `enter`) では tagParser が Hotspot タグを
+    /// 解決して Area2D 子ノードに乗せるので、テストでも同じ初期状態を作る。
+    /// `enter("demo_room")` 適用前は roomId が "" なので、`enter` 後に
+    /// applyHotspotTags が roomId を上書きすることまでをテストで検証する。
     def emptySceneWithRoom(): Scene[NodeTag] =
         let layer = CanvasLayer.make(5);
         Scene.empty()
             |> Scene.addNode(
                 RoomScene.layerName(),
                 EngineNode.CanvasLayerWithState(layer, NodeTag.Room(RoomScene.emptyData())))
+            |> addHotspot("drawer", ({x = 120.0, y = 200.0}: Vec2.Vec2),
+                          ({x = 48.0, y = 48.0}: Vec2.Vec2))
+            |> addHotspot("door",   ({x = 360.0, y = 176.0}: Vec2.Vec2),
+                          ({x = 48.0, y = 96.0}: Vec2.Vec2))
+
+    /// 1 つの Hotspot Area2D を Room レイヤ直下に追加する。タグの roomId は
+    /// 仮の "" (scene.json ロード直後の状態を再現)、`enter` で上書きされる前提。
+    def addHotspot(id: String, pos: Vec2.Vec2, size: Vec2.Vec2,
+                    scene: Scene[NodeTag]): Scene[NodeTag] =
+        let shape = CollisionShape2D.RectShape2D({width = size#x, height = size#y});
+        let area = Area2D.make(pos, shape);
+        let data = ({roomId = "", hotspotId = id}: RoomScene.HotspotData);
+        Scene.addChild(
+            RoomScene.layerName(),
+            "Hotspot_" + id,
+            EngineNode.Area2DWithState(area, NodeTag.Hotspot(data)),
+            scene)
 
     /// `Session.start` だけをログに記録するモック handler。
     /// 他の Session 操作は no-op で握りつぶす。テストは start のみを確認する。
@@ -72,17 +92,16 @@ mod TestRoomScene {
     // ========================================================================
 
     /// `enter("demo_room")` のあと Room レイヤの子に `Hotspot_drawer` と `Hotspot_door` の
-    /// Area2D + 兄弟 ColorRect (`HotspotVis_drawer` / `HotspotVis_door`) ぶん 4 ノードが並ぶ。
-    /// （scene.json をテストでは読み込まないので Bg は含まれない。
+    /// Area2D が並ぶ。視覚はすべて背景画像 `bg_demo_room.png` 内に描き込まれているので
+    /// sprite 子ノードは存在しない。
+    /// （scene.json をテストでは読み込まないので Bg sprite は含まれない。
     /// catalog に基づく動的構築だけを確認する。）
     @Test
     def testEnterAddsHotspotChildrenForCatalog(): Unit \ Assert =
         let scene = emptySceneWithRoom()
             |> RoomScene.enter("demo_room");
         let children = List.sort(Scene.getChildrenAt(RoomScene.layerPath(), scene));
-        let expected = List.sort(
-            "HotspotVis_drawer" :: "HotspotVis_door"
-            :: "Hotspot_drawer" :: "Hotspot_door" :: Nil);
+        let expected = List.sort("Hotspot_drawer" :: "Hotspot_door" :: Nil);
         Assert.assertEq(expected = expected, children)
 
     // ========================================================================
@@ -136,19 +155,20 @@ mod TestRoomScene {
     // (E) 部屋切替: 旧ホットスポットは消える
     // ========================================================================
 
-    /// `enter("demo_room")` で drawer をヒットできていた状態から、
-    /// `enter("demo_room2")` に切り替えると drawer 中心をクリックしても何も起動しない。
-    /// catalog 上 demo_room2 にあるのは note (中心 240,150) だけなので、drawer 座標は無効。
+    /// 部屋 id を切り替えると、scene.json 由来の同じ Area2D が **新しい部屋名空間**で
+    /// yarn ノードを起動するように tag が再ラベルされる。
+    /// 例: enter("demo_room") → クリック = Hotspot_demo_room_drawer
+    ///     enter("other_room") → 同じ位置 = Hotspot_other_room_drawer
+    /// (yarn 側で対応ノードを定義していないと Session.start で missing node になるが、
+    ///  本テストは「タグが新しい roomId で書き換わる」点だけを検証する)
     @Test
-    def testRoomSwitchInvalidatesPreviousHotspots(): Unit \ Assert =
+    def testRoomSwitchRelabelsHotspotTags(): Unit \ Assert =
         let scene1 = emptySceneWithRoom() |> RoomScene.enter("demo_room");
-        let hitDrawer = clickAndLog(scene1, ({x = 120.0, y = 200.0}: Vec2.Vec2));
-        let scene2 = scene1 |> RoomScene.enter("demo_room2");
-        let missDrawer = clickAndLog(scene2, ({x = 120.0, y = 200.0}: Vec2.Vec2));
-        let hitNote    = clickAndLog(scene2, ({x = 240.0, y = 150.0}: Vec2.Vec2));
+        let hitFirst = clickAndLog(scene1, ({x = 120.0, y = 200.0}: Vec2.Vec2));
+        let scene2 = scene1 |> RoomScene.enter("other_room");
+        let hitSecond = clickAndLog(scene2, ({x = 120.0, y = 200.0}: Vec2.Vec2));
         Assert.assertEq(
             expected = ("Hotspot_demo_room_drawer" :: Nil,
-                        Nil,
-                        "Hotspot_demo_room2_note" :: Nil),
-            (hitDrawer, missDrawer, hitNote))
+                        "Hotspot_other_room_drawer" :: Nil),
+            (hitFirst, hitSecond))
 }

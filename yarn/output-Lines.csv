@@ -1,57 +1,6 @@
 id,text,file,node,lineNumber
-line:284620bb,タイトル: [color=gold][b]脱出 - 古城の鍵[/b][/color],/Users/abab/Desktop/escape_game/yarn/story.yarn,Start,15
-line:be7627cc,はじめから,/Users/abab/Desktop/escape_game/yarn/story.yarn,Start,17
-line:04272e55,つづきから,/Users/abab/Desktop/escape_game/yarn/story.yarn,Start,20
-line:92172922,ナレーション: セーブデータが ありません。,/Users/abab/Desktop/escape_game/yarn/story.yarn,Start,23
-line:d840a1fa,おう: ゆうしゃよ、よくぞ もどった。,/Users/abab/Desktop/escape_game/yarn/story.yarn,Intro,34
-line:4e70a68d,おう: なまえを なんとしたかな？,/Users/abab/Desktop/escape_game/yarn/story.yarn,Intro,35
-line:f421af14,アレフ,/Users/abab/Desktop/escape_game/yarn/story.yarn,Intro,36
-line:6211a863,ベータ,/Users/abab/Desktop/escape_game/yarn/story.yarn,Intro,38
-line:f30c17f3,おう: そうじゃ、[color=cyan]{0}[/color] じゃったな。,/Users/abab/Desktop/escape_game/yarn/story.yarn,Intro,40
-line:653c1084,おう: おぬしは ゆうかんか？,/Users/abab/Desktop/escape_game/yarn/story.yarn,Intro,41
-line:c2d05e01,はい,/Users/abab/Desktop/escape_game/yarn/story.yarn,Intro,42
-line:54e05976,おう: たのもしいぞ。,/Users/abab/Desktop/escape_game/yarn/story.yarn,Intro,44
-line:eeb150ef,いいえ,/Users/abab/Desktop/escape_game/yarn/story.yarn,Intro,45
-line:78815798,おう: …まあ よかろう。,/Users/abab/Desktop/escape_game/yarn/story.yarn,Intro,47
-line:aaedded1,ナレーション: ここは ふるい へやだ。,/Users/abab/Desktop/escape_game/yarn/story.yarn,Room1,59
-line:3cddd9a6,ナレーション: たからばこ と とびら が みえる。,/Users/abab/Desktop/escape_game/yarn/story.yarn,Room1,60
-line:868cd03f,ナレーション: ({0} は はじめて この へやに きた),/Users/abab/Desktop/escape_game/yarn/story.yarn,Room1,62
-line:10bcd748,ナレーション: (なんども みた こうけい だ),/Users/abab/Desktop/escape_game/yarn/story.yarn,Room1,64
-line:81a168d8,たからばこを しらべる,/Users/abab/Desktop/escape_game/yarn/story.yarn,Room1,66
-line:17916faf,とびらを あける,/Users/abab/Desktop/escape_game/yarn/story.yarn,Room1,68
-line:707a9efd,やすむ,/Users/abab/Desktop/escape_game/yarn/story.yarn,Room1,70
-line:e64a998a,ナレーション: HP が [color=lime]{0}[/color] に かいふくした。,/Users/abab/Desktop/escape_game/yarn/story.yarn,Room1,76
-line:5c1b9013,王に あいに いく,/Users/abab/Desktop/escape_game/yarn/story.yarn,Room1,78
-line:40810036,ナレーション: たからばこは からっぽだ。,/Users/abab/Desktop/escape_game/yarn/story.yarn,ChestNode,86
-line:e31464a8,ナレーション: たからばこを あけた！,/Users/abab/Desktop/escape_game/yarn/story.yarn,ChestNode,92
-line:752463df,ナレーション: [color=yellow]かぎ[/color] を てに いれた。,/Users/abab/Desktop/escape_game/yarn/story.yarn,ChestNode,96
-line:b067bfc0,ナレーション: かぎを つかって とびらを あけた！,/Users/abab/Desktop/escape_game/yarn/story.yarn,DoorNode,107
-line:2657b8b7,ナレーション: かぎが かかっている。,/Users/abab/Desktop/escape_game/yarn/story.yarn,DoorNode,112
-line:40783fe0,ドラゴン: グルル… よくぞ ここまで きた。,/Users/abab/Desktop/escape_game/yarn/story.yarn,Battle,122
-line:9b5abc26,ドラゴン: HP {0} か。 たえられるかな？,/Users/abab/Desktop/escape_game/yarn/story.yarn,BattleLoop,131
-line:7ed37b46,ナレーション: [color=cyan]{0}[/color] は [color=red]{1}[/color] の ダメージ！ HP は [color=red]{2}[/color] に なった。,/Users/abab/Desktop/escape_game/yarn/story.yarn,BattleLoop,135
-line:e8e37c31,こうげき,/Users/abab/Desktop/escape_game/yarn/story.yarn,BattleLoop,139
-line:52b275a8,ナレーション: ゆうかんに きりつけた！ [color=red][b]クリティカル！[/b][/color],/Users/abab/Desktop/escape_game/yarn/story.yarn,BattleLoop,141
-line:c48272df,ドラゴン: グ… やられた…,/Users/abab/Desktop/escape_game/yarn/story.yarn,BattleLoop,142
-line:67171641,ナレーション: おそるおそる きりつけた。,/Users/abab/Desktop/escape_game/yarn/story.yarn,BattleLoop,145
-line:f1271136,にげる,/Users/abab/Desktop/escape_game/yarn/story.yarn,BattleLoop,148
-line:4b7618af,ナレーション: たいりょく が ある うちに にげきった。,/Users/abab/Desktop/escape_game/yarn/story.yarn,BattleLoop,150
-line:dd461fd8,ナレーション: にげきれない！,/Users/abab/Desktop/escape_game/yarn/story.yarn,BattleLoop,154
-line:49a38316,おう: おお、{0}よ。よくぞ もどった。,/Users/abab/Desktop/escape_game/yarn/story.yarn,MeetKing,166
-line:df938461,おう: たびを つづけるのじゃ。,/Users/abab/Desktop/escape_game/yarn/story.yarn,MeetKing,167
-line:bcbd1957,おう: おお、{0}よ。,/Users/abab/Desktop/escape_game/yarn/story.yarn,MeetKing,169
-line:2a8d1e20,おう: たびの きろくを のこすか？,/Users/abab/Desktop/escape_game/yarn/story.yarn,MeetKing,170
-line:90dc17b9,セーブする,/Users/abab/Desktop/escape_game/yarn/story.yarn,MeetKing,171
-line:06ec10ce,ナレーション: (セーブしました),/Users/abab/Desktop/escape_game/yarn/story.yarn,MeetKing,175
-line:a5797450,おう: きを つけて いくのじゃ。,/Users/abab/Desktop/escape_game/yarn/story.yarn,MeetKing,176
-line:33497327,やめておく,/Users/abab/Desktop/escape_game/yarn/story.yarn,MeetKing,177
-line:89187abe,おう: …よかろう。,/Users/abab/Desktop/escape_game/yarn/story.yarn,MeetKing,178
-line:eaf67ce8,おう: よくぞ もどった、{0}。,/Users/abab/Desktop/escape_game/yarn/story.yarn,Ending,188
-line:7bebc378,おう: そなた こそ しんの ゆうしゃ じゃ。,/Users/abab/Desktop/escape_game/yarn/story.yarn,Ending,190
-line:eddbc40f,おう: ぶじで なによりじゃ。,/Users/abab/Desktop/escape_game/yarn/story.yarn,Ending,192
-line:0852036f,おう: たびの きろくを のこそう。,/Users/abab/Desktop/escape_game/yarn/story.yarn,Ending,194
-line:9e620418,ナレーション: (セーブしました),/Users/abab/Desktop/escape_game/yarn/story.yarn,Ending,196
-line:0404434c,ナレーション: [color=cyan]{0}[/color] は たおれた。,/Users/abab/Desktop/escape_game/yarn/story.yarn,GameOver,208
-line:9234443b,ナレーション: [color=red][b]GAME OVER[/b][/color],/Users/abab/Desktop/escape_game/yarn/story.yarn,GameOver,210
-line:9674234c,ナレーション: たからばこを あけた。,/Users/abab/Desktop/escape_game/yarn/story.yarn,Hotspot_demo_room_chest,229
-line:8ca0366d,ナレーション: かぎが かかっている。,/Users/abab/Desktop/escape_game/yarn/story.yarn,Hotspot_demo_room_door,234
+line:ee8e9af4,引き出しの 中に かぎが あった。,/Users/abab/Desktop/escape_game/yarn/story.yarn,Hotspot_demo_room_drawer,9
+line:78be9d83,引き出しは からっぽだ。,/Users/abab/Desktop/escape_game/yarn/story.yarn,Hotspot_demo_room_drawer,12
+line:a5824a7a,ドアは 既に 開いている。,/Users/abab/Desktop/escape_game/yarn/story.yarn,Hotspot_demo_room_door,19
+line:33b24d0d,かぎを 使った。ドアが 開いた。,/Users/abab/Desktop/escape_game/yarn/story.yarn,Hotspot_demo_room_door,21
+line:90272993,ドアは ロックされている。,/Users/abab/Desktop/escape_game/yarn/story.yarn,Hotspot_demo_room_door,25
