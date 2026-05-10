@@ -15,7 +15,7 @@ mod Dialogue.Runner {
     use Yarn.Types.Value
     use Yarn.Types.Value.{BoolV}
     use Yarn.VM.{StepResult}
-    use Yarn.VM.StepResult.{Running, WaitingLine, WaitingOptions, WaitingCommand,
+    use Yarn.VM.StepResult.{Running, WaitingLine, WaitingChoice, WaitingCommand,
                              NodeComplete, DialogueComplete, Failed}
     use Dialogue.{PresentedLine, PresentedChoice}
 
@@ -102,7 +102,7 @@ mod Dialogue.Runner {
             def submitSelect(choiceIndex, resume) =
                 match Ref.get(vmRef) {
                     case Some(vm) => {
-                        Yarn.VM.selectOption(choiceIndex, vm);
+                        Yarn.VM.selectChoice(choiceIndex, vm);
                         runUntilWaiting(vm, compiledProject, maxStepsPerSubmit());
                         resume()
                     }
@@ -148,7 +148,7 @@ mod Dialogue.Runner {
                 case WaitingLine(lineId, substitutions) =>
                     let line = resolveLine(lineId, substitutions, compiledProject);
                     Dialogue.DialogueView.presentLine(line)
-                case WaitingOptions(entries) =>
+                case WaitingChoice(entries) =>
                     let choices = entriesToChoices(entries, compiledProject);
                     Dialogue.DialogueView.presentChoices(choices)
                 case WaitingCommand(commandText) => {
@@ -166,9 +166,9 @@ mod Dialogue.Runner {
                     Dialogue.DialogueView.dialogueComplete()
             }
 
-    /// `Yarn.VM` の OptionEntry から view 用の PresentedChoice に整形する。
+    /// `Yarn.VM` の ChoiceEntry から view 用の PresentedChoice に整形する。
     /// 表示テキストは StringTable で行 ID を引いて置換解決する。
-    def entriesToChoices(entries: List[Yarn.Types.OptionEntry], compiledProject: YarnProject):
+    def entriesToChoices(entries: List[Yarn.Types.ChoiceEntry], compiledProject: YarnProject):
                             List[PresentedChoice] =
         let toChoice = pair -> {
             let (index, entry) = pair;

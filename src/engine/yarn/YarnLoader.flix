@@ -131,8 +131,8 @@ mod Yarn.Loader {
                         Result[YarnLoadError, Instruction] =
         match opcode {
             case "runLine"        => decodeRunLine(operands)
-            case "addOption"      => decodeAddOption(operands)
-            case "showOptions"    => Ok(Instruction.ShowOptions)
+            case "addOption"      => decodeAddChoice(operands)
+            case "showOptions"    => Ok(Instruction.ShowChoices)
             case "jumpIfFalse"    => decodeJumpIfFalse(operands)
             case "jumpTo"         => decodeJumpTo(operands)
             case "peekAndJump"    => Ok(Instruction.PeekAndJump)
@@ -160,7 +160,8 @@ mod Yarn.Loader {
             substitutionCount    <- expectInt32(substitutionCountJson, "runLine.substitutionCount")
         ) yield Instruction.RunLine(lineRef, substitutionCount)
 
-    def decodeAddOption(element: Json.JsonElement): Result[YarnLoadError, Instruction] =
+    /// JSON 上のキーは `"addOption"` (Yarn Spinner 仕様) だが、Flix 側型は `AddChoice`。
+    def decodeAddChoice(element: Json.JsonElement): Result[YarnLoadError, Instruction] =
         forM (
             object               <- expectObject(element, "addOption");
             lineIdJson           <- requireKey("lineID", object);
@@ -171,7 +172,7 @@ mod Yarn.Loader {
             substitutionCount    <- expectInt32(substitutionCountJson, "addOption.substitutionCount");
             hasConditionJson     <- requireKey("hasCondition", object);
             hasCondition         <- expectBool(hasConditionJson, "addOption.hasCondition")
-        ) yield Instruction.AddOption(lineRef, destination, substitutionCount, hasCondition)
+        ) yield Instruction.AddChoice(lineRef, destination, substitutionCount, hasCondition)
 
     def decodeJumpIfFalse(element: Json.JsonElement): Result[YarnLoadError, Instruction] =
         forM (

@@ -7,7 +7,7 @@
 mod TestYarnLoader {
     use Yarn.Types.{Value, YarnProject, Program, YarnNode, Instruction}
     use Yarn.Types.Value.{BoolV, FloatV, StringV}
-    use Yarn.Types.Instruction.{RunLine, AddOption, ShowOptions, Return, RunNode}
+    use Yarn.Types.Instruction.{RunLine, AddChoice, ShowChoices, Return, RunNode}
     use Yarn.Loader.YarnLoadError
 
     // ========================================================================

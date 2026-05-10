@@ -44,7 +44,7 @@ mod Dialogue {
     }
 
     /// 表示用に整形された 1 つの選択肢。
-    /// `index` は VM の `selectOption` に渡す番号と一致する。
+    /// `index` は VM の `selectChoice` に渡す番号と一致する。
     pub type alias PresentedChoice = {
         index     = Int32,
         text      = ChoiceLabel,
@@ -478,7 +478,7 @@ mod Dialogue {
         /// 1 行表示する。表示完了後、ユーザの submitNext を待つ。
         def presentLine(line: PresentedLine): Unit
 
-        /// 選択肢を提示する。確定はユーザの selectOption を待つ。
+        /// 選択肢を提示する。確定はユーザの selectChoice を待つ。
         def presentChoices(choices: List[PresentedChoice]): Unit
 
         /// 表示中の行を消す（次の line / choices に行く前のクリア）。

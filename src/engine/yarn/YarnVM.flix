@@ -2,24 +2,24 @@
 ///
 /// region rc に閉じた可変領域に住む。step を呼ぶたびに 1 命令進み、結果を `StepResult` で返す。
 /// 行・選択肢・コマンドの待機が発生したら waitingState に印を立て、それぞれ
-/// `next` / `selectOption` / `commandComplete` で解除されるまで step は同じ
+/// `next` / `selectChoice` / `commandComplete` で解除されるまで step は同じ
 /// `StepResult` を返し続ける（同じ命令を二重実行しない）。
 ///
 /// エンジン依存なし。
 mod Yarn.VM {
     use Yarn.Types.{Value, Instruction, YarnNode, Program, YarnProject, LineRef,
-                    OptionEntry, CallFrame}
+                    ChoiceEntry, CallFrame}
     use Yarn.Types.Value.{BoolV, FloatV, StringV}
-    use Yarn.Types.Instruction.{RunLine, AddOption, ShowOptions, JumpIfFalse, JumpTo,
+    use Yarn.Types.Instruction.{RunLine, AddChoice, ShowChoices, JumpIfFalse, JumpTo,
                                  PeekAndJump, Pop, Return, Stop, PushString, PushFloat, PushBool,
                                  PushVariable, StoreVariable, CallFunc, RunCommand, RunNode, Detour}
     use Yarn.VariableStorage.VariableStorage
 
     /// step が外部入力待ちで停止しているときの内部マーカー。
-    /// `OptionEntry` を含むためレコード由来の Eq が無く、自動派生は付けていない。
+    /// `ChoiceEntry` を含むためレコード由来の Eq が無く、自動派生は付けていない。
     enum WaitingState {
         case ForLineNext(LineRef, List[String])
-        case ForOptionSelect(List[OptionEntry])
+        case ForChoice(List[ChoiceEntry])
         case ForCommandDone(String)
     }
 
@@ -28,7 +28,7 @@ mod Yarn.VM {
     pub enum StepResult {
         case Running
         case WaitingLine(LineRef, List[String])
-        case WaitingOptions(List[OptionEntry])
+        case WaitingChoice(List[ChoiceEntry])
         case WaitingCommand(String)
         case NodeComplete
         case DialogueComplete
@@ -43,7 +43,7 @@ mod Yarn.VM {
         stack              = MutDeque[Value, r],
         callStack          = MutDeque[CallFrame, r],
         variables          = Yarn.VariableStorage.VariableStorage[r],
-        pendingOptions     = MutDeque[OptionEntry, r],
+        pendingChoices     = MutDeque[ChoiceEntry, r],
         waitingState       = Ref[Option[WaitingState], r]
     }
 
@@ -59,7 +59,7 @@ mod Yarn.VM {
             stack              = MutDeque.empty(rc),
             callStack          = MutDeque.empty(rc),
             variables          = variables,
-            pendingOptions     = MutDeque.empty(rc),
+            pendingChoices     = MutDeque.empty(rc),
             waitingState       = Ref.fresh(rc, None)
         }
 
@@ -80,17 +80,17 @@ mod Yarn.VM {
         }
 
     /// 選択肢の確定。stack に (destination, true) を積んで再開できる状態にする。
-    pub def selectOption(optionIndex: Int32, vm: VM[r]): Unit \ r =
+    pub def selectChoice(choiceIndex: Int32, vm: VM[r]): Unit \ r =
         match Ref.get(vm#waitingState) {
-            case Some(WaitingState.ForOptionSelect(options)) =>
-                match List.nth(optionIndex, options) {
-                    case Some(option) =>
+            case Some(WaitingState.ForChoice(entries)) =>
+                match List.nth(choiceIndex, entries) {
+                    case Some(entry) =>
                         // 選択結果はスタックに [destination, true] の順で積む。
                         // top（true）を先に jumpIfFalse が peek し、pop の後 peekAndJump が
                         // destination を見る、という Yarn 標準の流れに合わせる。
-                        MutDeque.pushBack(FloatV(Int32.toFloat64(option#destination)), vm#stack);
+                        MutDeque.pushBack(FloatV(Int32.toFloat64(entry#destination)), vm#stack);
                         MutDeque.pushBack(BoolV(true), vm#stack);
-                        clearDeque(vm#pendingOptions);
+                        clearDeque(vm#pendingChoices);
                         Ref.put(None, vm#waitingState)
                     case None => ()  // 範囲外は無視
                 }
@@ -111,8 +111,8 @@ mod Yarn.VM {
     def stateToResult(state: WaitingState): StepResult = match state {
         case WaitingState.ForLineNext(lineRef, substitutions) =>
             StepResult.WaitingLine(lineRef, substitutions)
-        case WaitingState.ForOptionSelect(options) =>
-            StepResult.WaitingOptions(options)
+        case WaitingState.ForChoice(entries) =>
+            StepResult.WaitingChoice(entries)
         case WaitingState.ForCommandDone(text) =>
             StepResult.WaitingCommand(text)
     }
@@ -145,7 +145,7 @@ mod Yarn.VM {
                         vm#waitingState);
                 StepResult.WaitingLine(lineRef, substitutions)
 
-            case AddOption(lineRef, destination, substitutionCount, hasCondition) =>
+            case AddChoice(lineRef, destination, substitutionCount, hasCondition) =>
                 let substitutions = popSubstitutions(substitutionCount, vm);
                 let available =
                     if (hasCondition)
@@ -159,13 +159,13 @@ mod Yarn.VM {
                     substitutions = substitutions,
                     destination   = destination,
                     available     = available
-                }, vm#pendingOptions);
+                }, vm#pendingChoices);
                 StepResult.Running
 
-            case ShowOptions =>
-                let options = mutDequeToList(vm#pendingOptions);
-                Ref.put(Some(WaitingState.ForOptionSelect(options)), vm#waitingState);
-                StepResult.WaitingOptions(options)
+            case ShowChoices =>
+                let entries = mutDequeToList(vm#pendingChoices);
+                Ref.put(Some(WaitingState.ForChoice(entries)), vm#waitingState);
+                StepResult.WaitingChoice(entries)
 
             case JumpIfFalse(destination) =>
                 match MutDeque.peekBack(vm#stack) {

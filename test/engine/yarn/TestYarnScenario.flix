@@ -9,7 +9,7 @@
 mod TestYarnScenario {
     use Yarn.Types.{YarnProject, LineRef}
     use Yarn.VM.{VM, StepResult}
-    use Yarn.VM.StepResult.{Running, WaitingLine, WaitingOptions, WaitingCommand,
+    use Yarn.VM.StepResult.{Running, WaitingLine, WaitingChoice, WaitingCommand,
                              NodeComplete, DialogueComplete, Failed}
 
     /// 表面化するイベント（VM 内部の Running / NodeComplete は含まない）。
@@ -31,7 +31,7 @@ mod TestYarnScenario {
     // fixture は `TestYarnFixture.loadProject()` 経由でインライン取得する。
 
     /// VM を駆動して、各 Waiting* / Done に到達した時点でイベントを記録する。
-    /// 選択肢に当たったら choices の先頭を消費して selectOption する。
+    /// 選択肢に当たったら choices の先頭を消費して selectChoice する。
     /// maxSteps を超えたら StoppedAtLimit を末尾に付けて打ち切る。
     def runScenario(vm: VM[r], choices: List[Choice], maxSteps: Int32):
                      List[ScenarioEvent] \ r + Yarn.BuiltinExtension.Access =
@@ -49,10 +49,10 @@ mod TestYarnScenario {
                     Yarn.VM.next(vm);
                     loop(vm, choices, remaining - 1,
                          ScenarioEvent.Line(lineRef, substitutions) :: acc)
-                case WaitingOptions(options) =>
-                    let lineIds = List.map(option -> option#lineId, options);
+                case WaitingChoice(entries) =>
+                    let lineIds = List.map(entry -> entry#lineId, entries);
                     let (selectedIndex, restChoices) = nextChoiceIndex(choices);
-                    Yarn.VM.selectOption(selectedIndex, vm);
+                    Yarn.VM.selectChoice(selectedIndex, vm);
                     loop(vm, restChoices, remaining - 1,
                          ScenarioEvent.Options(lineIds) :: acc)
                 case WaitingCommand(text) =>

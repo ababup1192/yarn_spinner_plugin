@@ -23,7 +23,7 @@ mod Yarn.Types {
     pub type alias LineRef = String
 
     /// Yarn 命令ストリーム上の絶対アドレス（VM のインストラクションポインタ）。
-    /// `JumpIfFalse` / `JumpTo` / `AddOption` の destination で使う。
+    /// `JumpIfFalse` / `JumpTo` / `AddChoice` の destination で使う。
     pub type alias InstructionPointer = Int32
 
     /// 行表示・選択肢・コマンドの引数置換に使う「スタックから pop する個数」。
@@ -45,9 +45,11 @@ mod Yarn.Types {
         case RunLine(LineRef, SubstitutionCount)
         /// 選択肢を蓄積する。最後の Bool は条件付きフラグ。
         /// (lineId, destination, substitutionCount, hasCondition)
-        case AddOption(LineRef, InstructionPointer, SubstitutionCount, Bool)
+        /// JSON 上は `"addOption"` キー (Yarn Spinner 仕様)。
+        case AddChoice(LineRef, InstructionPointer, SubstitutionCount, Bool)
         /// 蓄積済みの選択肢を提示し、ユーザの選択結果をスタックに push する。
-        case ShowOptions
+        /// JSON 上は `"showOptions"` キー (Yarn Spinner 仕様)。
+        case ShowChoices
         /// スタック top を覗いて `false` ならジャンプ。pop しない。
         case JumpIfFalse(InstructionPointer)
         /// 無条件ジャンプ。
@@ -105,8 +107,8 @@ mod Yarn.Types {
         strings = Map[LineRef, String]
     }
 
-    /// 蓄積された選択肢の 1 エントリ。`AddOption` で追加され、`ShowOptions` で view に流れる。
-    pub type alias OptionEntry = {
+    /// 蓄積された選択肢の 1 エントリ。`AddChoice` で追加され、`ShowChoices` で view に流れる。
+    pub type alias ChoiceEntry = {
         lineId        = LineRef,
         substitutions = List[String],
         destination   = Int32,
