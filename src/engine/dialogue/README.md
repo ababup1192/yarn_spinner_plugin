@@ -349,13 +349,20 @@ DialogueProfile {
 
 | `Session` | 中で呼ぶ Yarn VM 操作 | 解除する VM 状態 |
 |---|---|---|
-| `start(node)` | `Yarn.VM.init(rc, project, node)` を作って Ref に格納 → `runUntilWaiting` | (新 VM 起動) |
-| `restart(node, vars)` | `init` → `vars` を `VariableStorage.set` で流し込む → `runUntilWaiting` | (新 VM 起動 + 変数復元) |
+| `start(node)` | `Yarn.VM.init(rc, project, node, sharedStorage)` で新 VM を作り Ref に格納 → `runUntilWaiting`。**変数は前 session のものをそのまま継続** | (新 VM 起動) |
+| `restart(node, vars)` | `VariableStorage.reset(sharedStorage, initialValues)` → `vars` を上書き → `init` → `runUntilWaiting` | (新 VM 起動 + 変数フル復元) |
 | `submitNext()` | `Yarn.VM.next(vm)` → `runUntilWaiting` | `WaitingLine` |
 | `submitSelect(idx)` | `Yarn.VM.selectChoice(idx, vm)` → `runUntilWaiting` | `WaitingChoice` |
 | `submitCommandDone()` | `Yarn.VM.commandComplete(vm)` → `runUntilWaiting` | `WaitingCommand` (async 時) |
 | `stop()` | Ref を `None` に + `DialogueView.dialogueComplete()` | (強制中断) |
 | `isActive()` | Ref が Some かつ `vm#currentNode` が Some か | — |
+
+**変数ストレージは Runner 1 個** — `withRunner` 起動時に `Yarn.VariableStorage.init`
+で 1 個作って全 session で共有する。`Yarn.VM.init` は storage を **借りる** だけ
+で自分では作らない。これにより、Hotspot をクリックする度に `Session.start` で
+新 VM を立てても `$flag_*` や `$Yarn.Internal.Visiting.*` は保持される。
+「タイトル → 最初から」のように完全リセットしたい場合は `restart(startNode, Map.empty())`
+を呼ぶ（initialValues に戻る）。
 
 VM 側の `Waiting*` / `next` / `selectChoice` / `commandComplete` の挙動は
 [`yarn/README.md` §6](../yarn/README.md#6-stepresult-の-7-状態) と

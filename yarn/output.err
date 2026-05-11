@@ -1,7 +1,0 @@
-Unhandled exception: System.NullReferenceException: Object reference not set to an instance of an object.
-   at YarnSpinnerConsole.CompileCommand.EmitCompilationResult(CompilationResult compiledResults, TextWriter textWriter) in /Users/abab/Desktop/yarn_spinner_plugin/.ysc-src/src/YarnSpinner.Console/Commands/CompileCommand.cs:line 202
-   at YarnSpinnerConsole.CompileCommand.CompileFiles(FileInfo[] inputs, DirectoryInfo outputDirectory, String outputName, String outputStringTableName, String outputMetadataTableName, Boolean stdout) in /Users/abab/Desktop/yarn_spinner_plugin/.ysc-src/src/YarnSpinner.Console/Commands/CompileCommand.cs:line 27
-   at YarnSpinnerConsole.YarnSpinnerConsole.<>c__DisplayClass2_0.<Main>b__1(ParseResult parseResult) in /Users/abab/Desktop/yarn_spinner_plugin/.ysc-src/src/YarnSpinner.Console/YarnSpinnerConsole.cs:line 76
-   at System.CommandLine.Command.<>c__DisplayClass30_0.<SetAction>b__0(ParseResult context)
-   at System.CommandLine.Invocation.AnonymousSynchronousCommandLineAction.Invoke(ParseResult parseResult)
-   at System.CommandLine.Invocation.InvocationPipeline.Invoke(ParseResult parseResult)

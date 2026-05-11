@@ -48,9 +48,15 @@ mod Yarn.VM {
     }
 
     /// startNode から実行開始する VM を作る。
-    pub def init(rc: Region[r], compiledProject: YarnProject, startNode: String): VM[r] \ r =
-        let variables = Yarn.VariableStorage.init(rc, compiledProject#program#initialValues);
-        // 開始ノードの訪問カウンタを 1 にする（output.json の規約）
+    ///
+    /// `variables` は呼び出し側 (`DialogueRunner` / テスト) が所有する共有ストレージ。
+    /// VM はこれを **借りる** だけで、自分では作らない。複数の VM が同じ storage を
+    /// 共有することで、Session.start の度に変数 ($flag_*, $Yarn.Internal.Visiting.*,
+    /// ユーザ定義 $var) がリセットされない、という仕様が型レベルで担保される。
+    /// 単体 VM が欲しいだけのテストは `Yarn.VariableStorage.init` で 1 個作って渡す。
+    pub def init(rc: Region[r], compiledProject: YarnProject, startNode: String,
+                  variables: Yarn.VariableStorage.VariableStorage[r]): VM[r] \ r =
+        // 開始ノードの訪問カウンタを 1 増やす（output.json の規約）
         Yarn.VariableStorage.incrementFloat("\$Yarn.Internal.Visiting.${startNode}", variables);
         {
             compiledProject    = compiledProject,
@@ -103,6 +109,12 @@ mod Yarn.VM {
             case Some(WaitingState.ForCommandDone(_)) => Ref.put(None, vm#waitingState)
             case _                                    => ()
         }
+
+    /// vm が現在何らかの Wait* 状態にあるか。
+    /// Runner 側が「stale な submit に対応する view イベントを再 emit してしまう」
+    /// race を避けるためのガードとして使う。
+    pub def isWaiting(vm: VM[r]): Bool \ r =
+        Option.nonEmpty(Ref.get(vm#waitingState))
 
     // ════════════════════════════════════════════════════════════════════════
     // 内部実装

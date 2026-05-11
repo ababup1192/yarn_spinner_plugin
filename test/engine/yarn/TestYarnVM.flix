@@ -70,7 +70,8 @@ mod TestYarnVM {
         let loaded = buildProject("Main", instructions);
         let label = region rc {
             run {
-                let vm = Yarn.VM.init(rc, loaded, "Main");
+                let storage = Yarn.VariableStorage.init(rc, loaded#program#initialValues);
+                let vm = Yarn.VM.init(rc, loaded, "Main", storage);
                 discard Yarn.VM.step(vm); // pushString
                 discard Yarn.VM.step(vm); // pushFloat
                 discard Yarn.VM.step(vm); // callFunc
@@ -104,7 +105,8 @@ mod TestYarnVM {
         let loaded = buildProject("Main", instructions);
         let lineRef = region rc {
             run {
-                let vm = Yarn.VM.init(rc, loaded, "Main");
+                let storage = Yarn.VariableStorage.init(rc, loaded#program#initialValues);
+                let vm = Yarn.VM.init(rc, loaded, "Main", storage);
                 discard Yarn.VM.step(vm);
                 discard Yarn.VM.step(vm);
                 discard Yarn.VM.step(vm);
@@ -140,7 +142,8 @@ mod TestYarnVM {
         let loaded = buildProject("Main", instructions);
         let stored = region rc {
             run {
-                let vm = Yarn.VM.init(rc, loaded, "Main");
+                let storage = Yarn.VariableStorage.init(rc, loaded#program#initialValues);
+                let vm = Yarn.VM.init(rc, loaded, "Main", storage);
                 discard Yarn.VM.step(vm); // pushBool
                 discard Yarn.VM.step(vm); // storeVariable
                 discard Yarn.VM.step(vm); // pop
@@ -168,7 +171,8 @@ mod TestYarnVM {
         let loaded = buildProject("Main", instructions);
         let label = region rc {
             run {
-                let vm = Yarn.VM.init(rc, loaded, "Main");
+                let storage = Yarn.VariableStorage.init(rc, loaded#program#initialValues);
+                let vm = Yarn.VM.init(rc, loaded, "Main", storage);
                 discard Yarn.VM.step(vm); // pushBool false
                 discard Yarn.VM.step(vm); // jumpIfFalse → ip=3
                 stepResultLabel(Yarn.VM.step(vm))
@@ -205,7 +209,8 @@ mod TestYarnVM {
         };
         let counts = region rc {
             run {
-                let vm = Yarn.VM.init(rc, loaded, "Main");
+                let storage = Yarn.VariableStorage.init(rc, loaded#program#initialValues);
+                let vm = Yarn.VM.init(rc, loaded, "Main", storage);
                 // step #1: runNode Sub を実行し、Sub の visiting カウンタを +1 にする。
                 discard Yarn.VM.step(vm);
                 // 訪問カウンタを直接読む。
@@ -251,7 +256,8 @@ mod TestYarnVM {
         };
         let label = region rc {
             run {
-                let vm = Yarn.VM.init(rc, loaded, "Main");
+                let storage = Yarn.VariableStorage.init(rc, loaded#program#initialValues);
+                let vm = Yarn.VM.init(rc, loaded, "Main", storage);
                 discard Yarn.VM.step(vm); // runNode Sub
                 stepResultLabel(Yarn.VM.step(vm)) // Sub の return
             } with Yarn.BuiltinExtension.withNoExtension
@@ -289,7 +295,8 @@ mod TestYarnVM {
         };
         let lineRef = region rc {
             run {
-                let vm = Yarn.VM.init(rc, loaded, "Main");
+                let storage = Yarn.VariableStorage.init(rc, loaded#program#initialValues);
+                let vm = Yarn.VM.init(rc, loaded, "Main", storage);
                 discard Yarn.VM.step(vm); // detourToNode Sub
                 discard Yarn.VM.step(vm); // Sub の return → NodeComplete、Main ip=1 へ
                 match Yarn.VM.step(vm) {  // runLine "line:after-detour"
@@ -331,7 +338,8 @@ mod TestYarnVM {
         };
         let label = region rc {
             run {
-                let vm = Yarn.VM.init(rc, loaded, "Main");
+                let storage = Yarn.VariableStorage.init(rc, loaded#program#initialValues);
+                let vm = Yarn.VM.init(rc, loaded, "Main", storage);
                 discard Yarn.VM.step(vm); // detourToNode Sub
                 stepResultLabel(Yarn.VM.step(vm)) // Sub の stop → DialogueComplete
             } with Yarn.BuiltinExtension.withNoExtension

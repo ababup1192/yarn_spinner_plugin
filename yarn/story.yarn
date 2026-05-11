@@ -1,27 +1,155 @@
+title: Declarations
+---
+<<declare $flag_drawer_searched = false>>
+<<declare $flag_key_taken = false>>
+===
+
 title: Start
 ---
+<<bgm play room>>
 <<room enter demo_room>>
+<<wait 0.4>>
+<<shake 0.5>>
+ぼく: う、うう…
+頭が ガンガン する。
+ぼく: ここは… どこだ？
+見たことのない 部屋だ。
+古びた 引き出しと、
+重そうな ドアが ある。
+ぼく: とにかく、出口を 探さないと。
 ===
 
 title: Hotspot_demo_room_drawer
 ---
-<<if not inv_has("demo_key")>>
-    引き出しの 中に かぎが あった。
-    <<inv add demo_key>>
+<<if inv_has("demo_key") or $flag_key_taken>>
+    <<jump DrawerEmpty>>
+<<elseif visited_count("Hotspot_demo_room_drawer") >= 3>>
+    <<jump DrawerLiftCheck>>
+<<elseif visited_count("Hotspot_demo_room_drawer") == 2>>
+    <<jump DrawerNoProgress>>
 <<else>>
-    引き出しは からっぽだ。
+    <<jump DrawerFirst>>
 <<endif>>
+===
+
+title: DrawerEmpty
+---
+ぼく: もう 引き出しは 調べ終えた。
+===
+
+title: DrawerFirst
+---
+<<se chest>>
+引き出しを そっと 開けた。
+中に 1枚の 紙きれが ある。
+ぼく: なになに…？
+ぼく: 「光は 影に 隠される。
+鍵は その 真下に あり。」
+ぼく: ……どういう 意味だろう。
+<<flag set drawer_searched>>
+===
+
+title: DrawerNoProgress
+---
+ぼく: もう一度 引き出しを 開けてみたが、
+特に 変わった ところは 無い。
+ぼく: 隅々まで もう少し 念入りに 探そう。
+===
+
+title: DrawerLiftCheck
+---
+ぼく: もう一度 よく 見てみよう…
+<<wait 0.5>>
+ぼく: ……ん？
+底板が 少し 浮いている。
+-> 底板を 持ち上げる
+    <<jump FindKey>>
+-> やめておく
+    ぼく: …今は やめておくか。
+===
+
+title: FindKey
+---
+<<se chest>>
+<<wait 0.3>>
+底板を そっと 外すと、
+下から 古びた 鍵が 出てきた。
+<<inv add demo_key>>
+<<flag set key_taken>>
+ぼく: これだ！
+ぼく: あの ドアを 開けられる かも しれない。
+ぼく: インベントリから 鍵を 選んで、
+ドアに 使ってみよう。
 ===
 
 title: Hotspot_demo_room_door
 ---
 <<if not is_locked("door")>>
-    ドアは 既に 開いている。
+    <<jump DoorOpen>>
 <<elseif inv_selected() == "demo_key">>
-    かぎを 使った。ドアが 開いた。
-    <<inv remove demo_key>>
-    <<hotspot unlock door>>
+    <<jump UnlockDoor>>
+<<elseif inv_has("demo_key")>>
+    ぼく: 鍵穴が ある。
+    ぼく: 持っている 鍵が 使えそうだ。
+    ぼく: インベントリから 鍵を 選択しよう。
 <<else>>
-    ドアは ロックされている。
+    <<jump DoorLocked>>
 <<endif>>
+===
+
+title: DoorLocked
+---
+<<se locked>>
+<<shake 0.3>>
+ドアを 引いてみたが、
+ガチャガチャと 鳴るだけだ。
+ぼく: 鍵が かかっている。
+<<if visited_count("DoorLocked") > 1>>
+    ぼく: 何度 試しても 同じだ。
+    ぼく: 鍵を 探さないと。
+<<elseif $flag_drawer_searched>>
+    ぼく: あの 引き出しの メモが 気になる。
+    ぼく: もう一度 調べてみるか。
+<<else>>
+    ぼく: 部屋の 中に 何か 道具が あるはずだ。
+<<endif>>
+===
+
+title: UnlockDoor
+---
+ぼく: この 鍵で 開けてみよう。
+<<wait 0.6>>
+カチャリ。
+<<wait 0.4>>
+<<se door_open>>
+<<wait 0.3>>
+鍵が 回り、ドアが ゆっくりと 解放された。
+<<inv remove demo_key>>
+<<hotspot unlock door>>
+ぼく: 開いた！
+-> 部屋を 出る
+    <<jump Ending>>
+-> もう少し 残る
+    ぼく: せっかくだ、もう少し 部屋を 見てから 出よう。
+===
+
+title: DoorOpen
+---
+ドアは 既に 開け 放たれている。
+-> 部屋を 出る
+    <<jump Ending>>
+-> まだ 残る
+    ぼく: ……もう少しだけ。
+===
+
+title: Ending
+---
+<<bgm fade 1.0>>
+<<wait 1.2>>
+ぼく: 外の 風が 心地よい…
+<<wait 0.5>>
+ぼく: ようやく、自由だ。
+<<bgm play ending>>
+<<wait 1.0>>
+～ END ～
 ===

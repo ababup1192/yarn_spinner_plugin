@@ -56,10 +56,15 @@ instance Node[NodeTag] {
 /// trait Aef に揃える。
 ///
 /// マウスクリックは:
-///   1. 対話モード中 (Yarn busy)            → 何もしない
+///   1. 対話モード中 (Yarn busy)            → DialogueScene.confirm (▼ 進行 / 一気出し / 選択肢確定)
 ///   2. クリックがインベントリバー領域内      → InventoryScene.onClick (スロット選択切替)
 ///   3. それ以外 (探索モードかつ室内クリック)  → AreaEvent.dispatchClicks (ホットスポット起動)
 /// の優先順で処理する。
+///
+/// `isActive = false` でも UI 側に transition 演出が残っているフレームでクリックすると
+/// 新 Session が走るが、`Dialogue.applyEvent` が transition 中の panel 起点イベントを
+/// `pendingEvent` 差し替え経路に流すので、旧 `Complete` が新 VM の表示行を消す競合は
+/// 起きない (Dialogue.flix の `eventStartsNewPanel` を参照)。
 instance InputEvent.InputHandler[NodeTag] {
     type Aef = { Dialogue.Session, GameEngine.Audio, Game.Inventory.Access }
 
@@ -73,7 +78,7 @@ instance InputEvent.InputHandler[NodeTag] {
                                 scene: Scene[NodeTag]):
                                 Scene[NodeTag] \ { Dialogue.Session, GameEngine.Audio,
                                                     Game.Inventory.Access } =
-        if (Dialogue.Session.isActive()) checked_ecast(scene)
+        if (Dialogue.Session.isActive()) checked_ecast(DialogueScene.confirm(scene))
         else if (InventoryScene.containsPoint(position))
             checked_ecast(InventoryScene.onClick(position, scene))
         else checked_ecast(AreaEvent.dispatchClicks(button, position, scene))

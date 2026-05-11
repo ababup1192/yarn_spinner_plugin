@@ -93,7 +93,8 @@ mod TestYarnScenario {
         let loaded = TestYarnFixture.loadProject();
         let events = region rc {
             run {
-                let vm = Yarn.VM.init(rc, loaded, "Start");
+                let storage = Yarn.VariableStorage.init(rc, loaded#program#initialValues);
+                let vm = Yarn.VM.init(rc, loaded, "Start", storage);
                 runScenario(vm, Choice.Yes :: Nil, 1000)
             } with Yarn.BuiltinExtension.withNoExtension
         };
@@ -124,7 +125,8 @@ mod TestYarnScenario {
         let manyNoChoices = List.repeat(100, Choice.No);
         let events = region rc {
             run {
-                let vm = Yarn.VM.init(rc, loaded, "Start");
+                let storage = Yarn.VariableStorage.init(rc, loaded#program#initialValues);
+                let vm = Yarn.VM.init(rc, loaded, "Start", storage);
                 runScenario(vm, manyNoChoices, 1000)
             } with Yarn.BuiltinExtension.withNoExtension
         };
@@ -150,7 +152,8 @@ mod TestYarnScenario {
         let loaded = TestYarnFixture.loadProject();
         let events = region rc {
             run {
-                let vm = Yarn.VM.init(rc, loaded, "Start");
+                let storage = Yarn.VariableStorage.init(rc, loaded#program#initialValues);
+                let vm = Yarn.VM.init(rc, loaded, "Start", storage);
                 runScenario(vm, Choice.No :: Nil, 5)
             } with Yarn.BuiltinExtension.withNoExtension
         };

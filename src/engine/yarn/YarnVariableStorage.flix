@@ -37,4 +37,12 @@ mod Yarn.VariableStorage {
     /// 全エントリを不変 `Map` に書き出す。セーブ用スナップショットに使う。
     pub def toMap(storage: VariableStorage[r]): Map[String, Value] \ r =
         MutMap.toMap(storage)
+
+    /// 全エントリを破棄して、`initialValues` で再初期化する。
+    /// セーブデータからのロード（`restart` 経路）など、storage を「フレッシュな状態」に
+    /// 戻したいときに使う。`MutMap` 自体の identity は保持するので、storage への
+    /// 参照を持っている VM/handler は壊れない。
+    pub def reset(storage: VariableStorage[r], initialValues: Map[String, Value]): Unit \ r =
+        MutMap.clear(storage);
+        Map.forEach((name, value) -> MutMap.put(name, value, storage), initialValues)
 }

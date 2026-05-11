@@ -3,6 +3,12 @@
 ///
 /// 内部状態は呼び出し元から渡された region に閉じる：
 ///   - `vmRef`         現在の VM（Option：未開始は None）
+///   - `variables`     全 session が共有する変数ストレージ。Session.start で VM を
+///                     作り直しても storage の identity は保たれ、`$flag_*`,
+///                     `$Yarn.Internal.Visiting.*`, ユーザ定義 `$var` がそのまま
+///                     残る。明示的にリセットしたい場合 (タイトル → 最初から、
+///                     セーブのロード) は `Session.restart(node, Map.empty())` を
+///                     呼ぶと initialValues に戻る。
 ///
 /// 1 つの `submit*` 呼び出しは「VM に状態変化を流し込み、次の Waiting* / 完了
 /// まで step を回す」を担う。
@@ -40,24 +46,21 @@ mod Dialogue.Runner {
                           + Dialogue.DialogueView
                           + Yarn.BuiltinExtension.Access + r =
         let vmRef: Ref[Option[Yarn.VM.VM[r]], r] = Ref.fresh(rc, None);
+        // 全 session が共有する変数ストレージ。VM が破棄されても残るので、
+        // Session.start を繰り返しても `$flag_*` や `visited_count(...)` が
+        // 維持される。リセットしたければ `Session.restart` で initialValues に戻す。
+        let variables = Yarn.VariableStorage.init(rc, compiledProject#program#initialValues);
         run body() with handler Yarn.VariableAccess {
 
             def setBool(name, value, resume) = {
-                match Ref.get(vmRef) {
-                    case Some(vm) => Yarn.VariableStorage.set(name, BoolV(value), vm#variables)
-                    case None     => ()
-                };
+                Yarn.VariableStorage.set(name, BoolV(value), variables);
                 resume()
             }
 
             def getBool(name, resume) = {
-                let result = match Ref.get(vmRef) {
-                    case Some(vm) =>
-                        match Yarn.VariableStorage.get(name, vm#variables) {
-                            case Some(BoolV(b)) => Some(b)
-                            case _              => None
-                        }
-                    case None => None
+                let result = match Yarn.VariableStorage.get(name, variables) {
+                    case Some(BoolV(b)) => Some(b)
+                    case _              => None
                 };
                 resume(result)
             }
@@ -69,14 +72,13 @@ mod Dialogue.Runner {
                 })
 
             def variableSnapshot(resume) =
-                resume(match Ref.get(vmRef) {
-                    case Some(vm) => Yarn.VariableStorage.toMap(vm#variables)
-                    case None     => Map.empty()
-                })
+                resume(Yarn.VariableStorage.toMap(variables))
         } with handler Dialogue.Session {
 
             def start(nodeName, resume) = {
-                let vm = Yarn.VM.init(rc, compiledProject, nodeName);
+                // 共有 storage を渡すだけ。前 session の変数はそのまま。
+                // (visit tracker の +1 は `Yarn.VM.init` 内で実行される)
+                let vm = Yarn.VM.init(rc, compiledProject, nodeName, variables);
                 Ref.put(Some(vm), vmRef);
                 runUntilWaiting(vm, compiledProject, syncCommands, maxStepsPerSubmit());
                 resume()
@@ -128,14 +130,18 @@ mod Dialogue.Runner {
                     case None => resume()
                 }
 
-            def restart(nodeName, variables, resume) = {
-                // 新 VM を作って variables を流し込んでから走らせる。
-                // start() より前に変数を入れるのが肝。ノード冒頭で `{$brave}` 等を
-                // 参照するセリフが復元値で正しく substitute される。
-                let vm = Yarn.VM.init(rc, compiledProject, nodeName);
+            def restart(nodeName, savedVars, resume) = {
+                // 共有 storage を initialValues に戻してから savedVars を上書き。
+                // 「タイトル → 最初から」は `restart(start, Map.empty())` で十分。
+                // セーブのロードは `restart(savedNode, savedVars)` で完全復元される。
+                // VM 作成は initialValues 復元後に行う（init が visit tracker を
+                // +1 するので、savedVars に同 tracker が入っていれば +1 だけずれる
+                // 余地があるが、savedVars が「ロード後に再入場した状態」を表すなら
+                // セーブ時点から見て「+1 増えている」のが正しい）。
+                Yarn.VariableStorage.reset(variables, compiledProject#program#initialValues);
                 Map.forEach((name, value) ->
-                    Yarn.VariableStorage.set(name, value, vm#variables),
-                    variables);
+                    Yarn.VariableStorage.set(name, value, variables), savedVars);
+                let vm = Yarn.VM.init(rc, compiledProject, nodeName, variables);
                 Ref.put(Some(vm), vmRef);
                 runUntilWaiting(vm, compiledProject, syncCommands, maxStepsPerSubmit());
                 resume()
@@ -146,11 +152,19 @@ mod Dialogue.Runner {
     /// 行・選択肢・コマンドそれぞれに対応する DialogueView 操作を呼ぶ。
     /// VM の暴走を防ぐため最大ステップ数で打ち切る。
     /// `syncCommands = true` のときは `<<command>>` を即完了扱いにして次の命令へ進める。
+    ///
+    /// 入口でガード: vm が既に Wait* 状態なら何もせず return する。
+    /// これは「既に対応する view イベントは前回 emit 済み」だから。ガード無しだと、
+    /// stale な submit*（rapid click による二重 submitSelect、WaitQueue 期限切れ後の
+    /// submitCommandDone が vm の進んだ先に追いつかない、等）が `vm.step` 経由で
+    /// 既存の WaitingState をそのまま返し、`presentLine`/`runCommand` などが二重に
+    /// queue へ積まれる = UI 上の行重複や SE 二重再生を起こす。
     def runUntilWaiting(vm: Yarn.VM.VM[r], compiledProject: YarnProject,
                          syncCommands: Bool, remaining: Int32):
                          Unit \ Dialogue.DialogueView
                               + Yarn.BuiltinExtension.Access + r =
-        if (remaining <= 0)
+        if (Yarn.VM.isWaiting(vm)) ()
+        else if (remaining <= 0)
             Dialogue.DialogueView.dialogueComplete()
         else
             match Yarn.VM.step(vm) {

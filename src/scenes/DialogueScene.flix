@@ -100,11 +100,7 @@ mod DialogueScene {
     // ════════════════════════════════════════════════════════════════════════
 
     /// 1 キー入力を対話 UI として解釈する。
-    ///   - 確定キー（Z/Space/Enter）: `Dialogue.confirmAction(state)` の 4 分岐に委ねる
-    ///       * `SelectChoice(i)` → tap → `submitSelect(i)`
-    ///       * `ForceFullReveal` → tap → typewriter 一気出し
-    ///       * `AdvanceLine`     → tap → `submitNext`
-    ///       * `Ignore`          → 何もしない（auto-next 中・transition 中など）
+    ///   - 確定キー（Z/Space/Enter）: `confirm` に委ねる
     ///   - 上 (Up/W): カーソル -1
     ///   - 下 (Down/S): カーソル +1
     /// 表示中（visible=true）でないキーは黙って無視する。
@@ -119,26 +115,38 @@ mod DialogueScene {
                 or key == GameEngine.Key.Enter;
             let isUp = key == GameEngine.Key.Up or key == GameEngine.Key.W;
             let isDown = key == GameEngine.Key.Down or key == GameEngine.Key.S;
-            if (isConfirm) {
-                match Dialogue.confirmAction(state) {
-                    case Dialogue.ConfirmAction.Ignore => scene
-                    case Dialogue.ConfirmAction.SelectChoice(i) =>
-                        GameEngine.Audio.playAudio("tap");
-                        Dialogue.Session.submitSelect(i);
-                        scene
-                    case Dialogue.ConfirmAction.ForceFullReveal =>
-                        GameEngine.Audio.playAudio("tap");
-                        mapState(s -> Dialogue.forceFullReveal(s), scene)
-                    case Dialogue.ConfirmAction.AdvanceLine =>
-                        GameEngine.Audio.playAudio("tap");
-                        Dialogue.Session.submitNext();
-                        scene
-                }
-            } else if (isUp)
+            if (isConfirm) confirm(scene)
+            else if (isUp)
                 mapState(s -> Dialogue.moveCursor(-1, s), scene)
             else if (isDown)
                 mapState(s -> Dialogue.moveCursor(1, s), scene)
             else scene
+        }
+
+    /// 確定アクションを処理する。`Dialogue.confirmAction(state)` の 4 分岐:
+    ///   * `SelectChoice(i)` → tap → `submitSelect(i)`
+    ///   * `ForceFullReveal` → tap → typewriter 一気出し
+    ///   * `AdvanceLine`     → tap → `submitNext`
+    ///   * `Ignore`          → 何もしない（auto-next 中・transition 中など）
+    /// キー入力（Z/Space/Enter）と探索モードのマウスクリックの両方から呼ばれる。
+    /// 表示中（visible=true）でなければ no-op。
+    pub def confirm(scene: Scene[NodeTag]):
+                     Scene[NodeTag] \ {Dialogue.Session, GameEngine.Audio} =
+        let state = getState(scene);
+        if (not state#visible) scene
+        else match Dialogue.confirmAction(state) {
+            case Dialogue.ConfirmAction.Ignore => scene
+            case Dialogue.ConfirmAction.SelectChoice(i) =>
+                GameEngine.Audio.playAudio("tap");
+                Dialogue.Session.submitSelect(i);
+                scene
+            case Dialogue.ConfirmAction.ForceFullReveal =>
+                GameEngine.Audio.playAudio("tap");
+                mapState(s -> Dialogue.forceFullReveal(s), scene)
+            case Dialogue.ConfirmAction.AdvanceLine =>
+                GameEngine.Audio.playAudio("tap");
+                Dialogue.Session.submitNext();
+                scene
         }
 
     /// レイヤノードの `process` ライフサイクル。

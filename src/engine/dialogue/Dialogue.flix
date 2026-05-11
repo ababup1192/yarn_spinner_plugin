@@ -193,16 +193,34 @@ mod Dialogue {
         else
             applyEventInner(event, state)
 
-    /// イベントを受けたら **新パネル化** すべきか。lines が空のときは false（最初の行は
-    /// 即時表示してよい。transition する旧 lines も無いので保留する意味も無い）。
+    /// イベントを受けたら **新パネル化（= transition でゲート）** すべきか。
+    ///
+    /// 通常時 (transition なし):
+    ///   - lines 空: false（最初の行は即時表示してよい。transition する旧 lines も
+    ///     無いので保留する意味も無い）
+    ///   - それ以外: 名前付き Line / 上限到達 Line / Choices / Complete で true
+    ///
+    /// transition 中:
+    ///   - panel 起点系 (Line / Choices / Complete) は **常に true** を返し、
+    ///     `beginPanelTransition` の「pendingEvent 上書き」経路に流す。
+    ///     これは旧 session の `Complete` が新 session の `Line` に追い越されるケースを
+    ///     正しく処理するため: lines が空 (= transition 開始直後) でも、新イベントを
+    ///     `applyEventInner` 経由で生に反映してしまうと、後続の演出完了で旧
+    ///     `pendingEvent` が走って消されてしまう。差し替え経路に乗せれば、演出完了時に
+    ///     最新のイベントが描画される。
+    ///   - Dismiss / Command は panel を変えないので false（演出と無関係に実行）
     def eventStartsNewPanel(event: ViewEvent, state: UIState): Bool =
-        if (List.isEmpty(state#lines)) false
-        else match event {
+        let inTransition = Option.nonEmpty(state#transition);
+        match event {
             case ViewEvent.Line(_, speaker) =>
-                (state#profile#breakOnSpeakerLine and Option.nonEmpty(speaker))
-                or List.length(state#lines) >= state#profile#maxLinesPerPanel
-            case ViewEvent.Choices(_) => true
-            case ViewEvent.Complete   => true
+                if (inTransition) true
+                else if (List.isEmpty(state#lines)) false
+                else (state#profile#breakOnSpeakerLine and Option.nonEmpty(speaker))
+                  or List.length(state#lines) >= state#profile#maxLinesPerPanel
+            case ViewEvent.Choices(_) =>
+                inTransition or not List.isEmpty(state#lines)
+            case ViewEvent.Complete =>
+                inTransition or not List.isEmpty(state#lines)
             case ViewEvent.Dismiss    => false
             case ViewEvent.Command(_) => false
         }
