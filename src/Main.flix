@@ -21,6 +21,8 @@ def main(): Unit \ {IO, Chan, NonDet} =
                 ({ name = "bg_demo_room",  path = "sprites/bg_demo_room.png",  hasAlpha = false }: GameEngine.TextureEntry)
                 // インベントリアイコン。InventoryScene が `icon_<itemId>` で参照する。
                 :: ({ name = "icon_demo_key", path = "sprites/icon_demo_key.png", hasAlpha = true }: GameEngine.TextureEntry)
+                // 個別オブジェクト sprite。背景に描き込まず単体テクスチャとして持ちたいものを登録する。
+                :: ({ name = "sprite_safe_box", path = "sprites/sprite_safe_box.png", hasAlpha = true }: GameEngine.TextureEntry)
                 :: Nil,
             // PixelMplus10 は 10px 設計のドットフォント。bake サイズも 10 に揃える。
             // [b] タグ用に Bold バリアントを並列登録し、RichTextLabel が文字単位で

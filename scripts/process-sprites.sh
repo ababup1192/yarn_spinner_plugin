@@ -78,4 +78,7 @@ process_icon() {
 # 抜くことはない。
 process_icon "icon_demo_key" 24 24 25
 
+# 金庫 (Hotspot_safe と同寸 70x70)。JPEG 白背景由来の halo を抜くため fuzz=25%。
+process_icon "sprite_safe_box" 70 70 25
+
 echo "done."

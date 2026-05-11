@@ -16,6 +16,22 @@
       "visible": false
     },
     {
+      "centered": true,
+      "name": "Safe",
+      "pos": [
+        258,
+        232
+      ],
+      "scale": [
+        0.199877950083542,
+        0.17659072511929114
+      ],
+      "texture": "sprite_safe_box",
+      "type": "Sprite2D",
+      "visible": true,
+      "zIndex": 1
+    },
+    {
       "monitoring": true,
       "name": "Hotspot_drawer",
       "pos": [
@@ -34,13 +50,13 @@
       "monitoring": true,
       "name": "Hotspot_painting",
       "pos": [
-        220,
-        70
+        2.4E+2,
+        63
       ],
       "shape": {
-        "height": 60.0,
+        "height": 45.33723958333333,
         "kind": "RectShape2D",
-        "width": 70.0
+        "width": 50.75000000000005
       },
       "tag": "Hotspot:painting",
       "type": "Area2D"
