@@ -232,6 +232,18 @@ mod EngineNode {
         case _ => node
     }
 
+    /// 明示的な `size` フィールドを持つノード変種から (w, h) を取り出す。
+    /// 持たないノード（Sprite2D / Label2D / Marker2D / CanvasLayer 等）は `None`。
+    /// Hit-test や bounds 計算（`Scene.getGlobalRect` 経由）の基礎関数。
+    pub def getSize(node: EngineNode[s]): Option[Vec2.Vec2] = match node {
+        case EngineNode.ControlWithState(ctrl, _)        => Some(Control.getSize(ctrl))
+        case EngineNode.ButtonWithState(btn, _)          => Some(Button.getSize(btn))
+        case EngineNode.TextureButtonWithState(btn, _)   => Some(TextureButton.getSize(btn))
+        case EngineNode.RichTextLabelWithState(label, _) => Some(RichTextLabel.getSize(label))
+        case EngineNode.ColorRectWithState(rect, _)      => Some(ColorRect.getSize(rect))
+        case _                                           => None
+    }
+
     /// Sprite2D を Drawable に変換する。
     /// region / hframes / vframes / frame から GPU シェーダ用 uvOffset/uvScale を計算するため
     /// テクスチャサイズが必要で、Game eff を要求する。

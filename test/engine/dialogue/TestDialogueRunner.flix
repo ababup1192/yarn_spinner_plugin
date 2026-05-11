@@ -71,4 +71,35 @@ mod TestDialogueRunner {
         let expected: (Option[ViewEvent], Option[ViewEvent]) =
             (Some(expectedLine), Some(expectedLine));
         Assert.assertEq(expected = expected, firstAndFifth)
+
+    // ========================================================================
+    // setCursor — マウスホバー由来の絶対 index 指定
+    // ========================================================================
+
+    /// 範囲内 index は wrap-around せず、そのまま cursor にセットされる。
+    @Test
+    def testSetCursorWithinRange(): Unit \ Assert =
+        let state = { choices = "a" :: "b" :: Nil, cursor = 1
+                    | Dialogue.emptyState(Dialogue.jrpgProfile()) };
+        Assert.assertEq(expected = 0, Dialogue.setCursor(0, state)#cursor)
+
+    /// 範囲外 index は no-op（cursor は維持）。`moveCursor` と違って wrap しない。
+    @Test
+    def testSetCursorOutOfRangeIgnored(): Unit \ Assert =
+        let state = { choices = "a" :: "b" :: Nil, cursor = 1
+                    | Dialogue.emptyState(Dialogue.jrpgProfile()) };
+        Assert.assertEq(expected = 1, Dialogue.setCursor(2, state)#cursor)
+
+    /// 負の index も範囲外として no-op。
+    @Test
+    def testSetCursorNegativeIgnored(): Unit \ Assert =
+        let state = { choices = "a" :: "b" :: Nil, cursor = 1
+                    | Dialogue.emptyState(Dialogue.jrpgProfile()) };
+        Assert.assertEq(expected = 1, Dialogue.setCursor(-1, state)#cursor)
+
+    /// choices が空のときは何もしない（emptyState 直後を含む）。
+    @Test
+    def testSetCursorIgnoredWhenNoChoices(): Unit \ Assert =
+        let state = Dialogue.emptyState(Dialogue.jrpgProfile());
+        Assert.assertEq(expected = 0, Dialogue.setCursor(0, state)#cursor)
 }

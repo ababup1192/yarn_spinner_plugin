@@ -82,6 +82,17 @@ instance InputEvent.InputHandler[NodeTag] {
         else if (InventoryScene.containsPoint(position))
             checked_ecast(InventoryScene.onClick(position, scene))
         else checked_ecast(AreaEvent.dispatchClicks(button, position, scene))
+
+    // 対話モード中はホバーイベントを DialogueScene.onHover に委譲し、
+    // 選択肢上にマウスが乗ったらカーソルをそこに合わせる。
+    // Body 以外のホバー（白枠 / 黒地など）は DialogueScene 側で no-op。
+    redef onMouseHover(path: NodePath, localPosition: Vec2.Vec2,
+                        scene: Scene[NodeTag]):
+                        Scene[NodeTag] \ { Dialogue.Session, GameEngine.Audio,
+                                            Game.Inventory.Access } =
+        if (Dialogue.Session.isActive())
+            checked_ecast(DialogueScene.onHover(path, localPosition, scene))
+        else checked_ecast(scene)
 }
 
 /// 衝突応答ハンドラ。Phase 2 ではマウスクリック時に Hotspot タグの Area2D に着地した

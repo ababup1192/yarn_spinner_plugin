@@ -94,6 +94,12 @@ mod RichTextLabel {
         let RichTextLabel.RichTextLabel(r) = label;
         r#size
 
+    /// 表示フォントサイズ（design px）を取得する。
+    /// 行高さ計算（ヒットテストやスクロール量）の基準値として使う。
+    pub def getFontSize(label: RichTextLabel): Float64 =
+        let RichTextLabel.RichTextLabel(r) = label;
+        r#fontSize
+
     /// スクロール位置（縦）を設定する。範囲は 0 〜 max(0, contentHeight - size.y) にクランプ。
     pub def setScrollY(scrollY: Float64, label: RichTextLabel): RichTextLabel =
         let RichTextLabel.RichTextLabel(r) = label;

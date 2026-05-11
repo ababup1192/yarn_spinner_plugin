@@ -62,7 +62,20 @@ mod DialogueScene {
 
     /// 1 行分の表示高さ（design px）。BestTen-DOT を bake 16 / display 8 で使うので
     /// lineHeight ≈ font の em (16) を 0.5 倍した 8 px。transition のスナップ閾値計算に使う。
+    /// 注: 現状は scene.json の Body.fontSize=8 と暗黙に一致。fontSize を変えるなら
+    /// この値も同期する必要がある（選択肢ヒットテストは `bodyFontSize` で動的化済み）。
     def transitionLineHeight(): Float64 = 8.0
+
+    /// Body RichTextLabel から表示フォントサイズ (= 1 行分の高さ) を取り出す。
+    /// 取得できない場合は scene.json デフォルトの `8.0` を返す。
+    /// 選択肢ホバーの index 計算（`choiceIndexAt`）で使う。
+    /// scene.json で fontSize を変えたら、このパスでヒットテストの行高さも自動追従する。
+    def bodyFontSize(scene: Scene[NodeTag]): Float64 =
+        match Scene.getEngineNode(bodyPath(), scene) {
+            case Some(EngineNode.RichTextLabelWithState(label, _)) =>
+                RichTextLabel.getFontSize(label)
+            case _ => 8.0
+        }
 
     // ════════════════════════════════════════════════════════════════════════
     // (C) 構築
@@ -147,6 +160,46 @@ mod DialogueScene {
                 GameEngine.Audio.playAudio("tap");
                 Dialogue.Session.submitNext();
                 scene
+        }
+
+    /// Body 内のローカル Y 座標を選択肢 index に変換する純粋関数。
+    /// 行高さ `lineHeight` の固定ピッチで割り算するだけ。
+    /// Y が負、`choiceCount` の範囲外、または `lineHeight <= 0` なら `None`。
+    /// 選択肢の global 位置 / 幅は `Scene.hoveredPathsAt` がエンジン側で判定するので、
+    /// ここでは「Body に乗っている」ことを前提に index 計算だけを担う。
+    pub def choiceIndexAt(localY: Float64, choiceCount: Int32,
+                            lineHeight: Float64): Option[Int32] =
+        if (choiceCount <= 0) None
+        else if (lineHeight <= 0.0) None
+        else if (localY < 0.0) None
+        else {
+            let index =
+                Float64.floor(localY / lineHeight)
+                    |> Float64.tryToInt32
+                    |> Option.getWithDefault(-1);
+            if (index < 0 or index >= choiceCount) None
+            else Some(index)
+        }
+
+    /// `InputEvent.onMouseHover` 由来のシーン側応答。
+    /// `path` が Body かつ選択肢モード中なら、`localPosition.y` から index を逆算して
+    /// `Dialogue.setCursor` を呼ぶ。それ以外（Body 以外のホバー・選択肢モード以外）は no-op。
+    /// 行高さは Body の RichTextLabel.fontSize から動的に読むので、scene.json で
+    /// fontSize を変えてもヒットテストが追従する。
+    /// 毎フレーム呼ばれるので、選択肢が出た瞬間にマウスが乗っているケースも追従できる。
+    pub def onHover(path: NodePath, localPosition: Vec2.Vec2,
+                     scene: Scene[NodeTag]): Scene[NodeTag] =
+        if (path != bodyPath()) scene
+        else {
+            let state = getState(scene);
+            if (not state#visible) scene
+            else {
+                let lineHeight = bodyFontSize(scene);
+                match choiceIndexAt(localPosition#y, List.length(state#choices), lineHeight) {
+                    case None        => scene
+                    case Some(index) => mapState(s -> Dialogue.setCursor(index, s), scene)
+                }
+            }
         }
 
     /// レイヤノードの `process` ライフサイクル。

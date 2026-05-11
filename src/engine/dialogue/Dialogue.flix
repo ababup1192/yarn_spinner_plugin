@@ -314,6 +314,16 @@ mod Dialogue {
             { cursor = normalized | state }
         }
 
+    /// 選択肢の `index` を直接カーソルにセットする。
+    /// `index` が `[0, choices.length)` の外、または `choices` が空のときは状態を変えない。
+    /// マウスホバー由来の絶対指定（`DialogueScene.onMouseMotion`）から使う。
+    /// `moveCursor` と違って wrap-around しない（ヒットテストの結果を素直に反映するため）。
+    pub def setCursor(index: Int32, state: UIState): UIState =
+        let choiceCount = List.length(state#choices);
+        if (choiceCount <= 0) state
+        else if (index < 0 or index >= choiceCount) state
+        else { cursor = index | state }
+
     /// 1 フレーム経過分の更新。typewriter / transition / 経過時間の 3 つを進める。
     pub def tick(delta: Duration.Duration, state: UIState): UIState =
         state
