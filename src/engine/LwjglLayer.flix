@@ -4,6 +4,7 @@ mod LwjglLayer {
     import org.lwjgl.glfw.GLFW
     import org.lwjgl.glfw.Callbacks
     import org.lwjgl.glfw.GLFWFramebufferSizeCallbackI
+    import org.lwjgl.glfw.GLFWMouseButtonCallbackI
     import org.lwjgl.glfw.GLFWScrollCallbackI
     import org.lwjgl.opengl.GL
     import org.lwjgl.opengl.GL11
@@ -739,6 +740,12 @@ mod LwjglLayer {
         let window = GLFW.glfwCreateWindow(config#windowWidth, config#windowHeight, config#title, MemoryUtil.NULL, MemoryUtil.NULL);
         GLFW.glfwMakeContextCurrent(window);
         GLFW.glfwSwapInterval(1);
+        // Sticky mouse buttons: 1 フレーム未満の press→release（macOS の
+        // トラックパッド「タップでクリック」など）が polling で取りこぼされる
+        // のを防ぐ。次回 `glfwGetMouseButton` 呼び出し時に PRESS を 1 度返してから
+        // RELEASE に落ちる。これがないと Mac ユーザは "押してるつもりなのに
+        // 反応しない" 体感になる。
+        GLFW.glfwSetInputMode(window, GLFW.GLFW_STICKY_MOUSE_BUTTONS, GL11.GL_TRUE);
         discard GL.createCapabilities();
 
         let fbStack = MemoryStack.stackPush();
@@ -828,6 +835,23 @@ mod LwjglLayer {
             }
         });
 
+        // マウスボタンの「PRESS が来た」フラグを 1 フレームぶん保持する。
+        // [0]=Left, [1]=Right, [2]=Middle. `shouldClose` が glfwPollEvents の **直前**
+        // にリセットし、polling 中に来た callback が立てる。`isMouseButtonPressed` は
+        // 物理状態 (`glfwGetMouseButton`) と OR を取って返す。
+        // これが無いと、macOS トラックパッドの「タップでクリック」のように 1 フレーム
+        // 未満で press→release が完結する入力を polling だけでは取りこぼす。
+        let mouseButtonPressedHolder = Array#{false, false, false} @ Static;
+        discard GLFW.glfwSetMouseButtonCallback(window, new GLFWMouseButtonCallbackI {
+            def invoke(_this: GLFWMouseButtonCallbackI, _w: Int64,
+                        button: Int32, action: Int32, _mods: Int32): Unit \ IO = {
+                // GLFW_PRESS = 1。0..2 範囲外 (将来 GLFW が追加するボタン) は無視。
+                if (action == 1 and button >= 0 and button <= 2)
+                    Array.put(true, button, mouseButtonPressedHolder)
+                else ()
+            }
+        });
+
         // macOS ではリサイズ中に glfwPollEvents がブロックされるため、
         // フレームバッファサイズ変更コールバックで再描画を行う
         discard GLFW.glfwSetFramebufferSizeCallback(window, new GLFWFramebufferSizeCallbackI {
@@ -886,6 +910,13 @@ mod LwjglLayer {
                 k((tileVao, List.length(instances)))
             }
             def shouldClose(k) = {
+                // glfwPollEvents の **直前** に PRESS フラグをリセット。
+                // poll 中に発火した callback が立てたフラグが、その後の
+                // `isMouseButtonPressed` 経路で 1 フレーム間だけ true として読まれ、
+                // 次フレーム冒頭でクリアされる。
+                Array.put(false, 0, mouseButtonPressedHolder);
+                Array.put(false, 1, mouseButtonPressedHolder);
+                Array.put(false, 2, mouseButtonPressedHolder);
                 GLFW.glfwPollEvents();
                 k(GLFW.glfwWindowShouldClose(window))
             }
@@ -924,7 +955,12 @@ mod LwjglLayer {
             }
             def isMouseButtonPressed(button, k) = {
                 let code = mouseButtonToGlfw(button);
-                k(GLFW.glfwGetMouseButton(window, code) == 1)
+                // 物理状態 OR 当フレーム内に callback が観測した PRESS。
+                // 後者は macOS トラックパッドのタップなど、polling 間隔より速い
+                // press→release を取りこぼさないためのフォールバック。
+                let polled = GLFW.glfwGetMouseButton(window, code) == 1;
+                let buffered = Array.get(code, mouseButtonPressedHolder);
+                k(polled or buffered)
             }
             def consumeScrollDelta(k) = {
                 let v = Array.get(0, scrollDeltaHolder);
