@@ -1,7 +1,10 @@
 title: Declarations
 ---
 <<declare $flag_drawer_searched = false>>
-<<declare $flag_key_taken = false>>
+<<declare $flag_painting_seen = false>>
+<<declare $safe_slot_1 = "">>
+<<declare $safe_slot_2 = "">>
+<<declare $safe_slot_3 = "">>
 ===
 
 title: Start
@@ -14,27 +17,18 @@ title: Start
 頭が ガンガン する。
 ぼく: ここは… どこだ？
 見たことのない 部屋だ。
-古びた 引き出しと、
-重そうな ドアが ある。
+古びた 引き出しと、壁の 額縁、
+そして 重そうな 金庫と ドアが ある。
 ぼく: とにかく、出口を 探さないと。
 ===
 
 title: Hotspot_demo_room_drawer
 ---
-<<if inv_has("demo_key") or $flag_key_taken>>
-    <<jump DrawerEmpty>>
-<<elseif visited_count("Hotspot_demo_room_drawer") >= 3>>
-    <<jump DrawerLiftCheck>>
-<<elseif visited_count("Hotspot_demo_room_drawer") == 2>>
-    <<jump DrawerNoProgress>>
+<<if $flag_drawer_searched>>
+    <<jump DrawerRecall>>
 <<else>>
     <<jump DrawerFirst>>
 <<endif>>
-===
-
-title: DrawerEmpty
----
-ぼく: もう 引き出しは 調べ終えた。
 ===
 
 title: DrawerFirst
@@ -43,43 +37,148 @@ title: DrawerFirst
 引き出しを そっと 開けた。
 中に 1枚の 紙きれが ある。
 ぼく: なになに…？
-ぼく: 「光は 影に 隠される。
-鍵は その 真下に あり。」
-ぼく: ……どういう 意味だろう。
+ぼく: 「合わせれば 道は 開かれる。
+鍵は ３つの しるしに 宿る。」
+ぼく: ……金庫の こと だろうか。
+ぼく: ３つの しるし…
+部屋の どこかに ヒントが あるはずだ。
 <<flag set drawer_searched>>
 ===
 
-title: DrawerNoProgress
+title: DrawerRecall
 ---
-ぼく: もう一度 引き出しを 開けてみたが、
-特に 変わった ところは 無い。
-ぼく: 隅々まで もう少し 念入りに 探そう。
+ぼく: 引き出しの メモを もう一度 読み返す。
+ぼく: 「合わせれば 道は 開かれる。
+鍵は ３つの しるしに 宿る。」
 ===
 
-title: DrawerLiftCheck
+title: Hotspot_demo_room_painting
 ---
-ぼく: もう一度 よく 見てみよう…
-<<wait 0.5>>
-ぼく: ……ん？
-底板が 少し 浮いている。
--> 底板を 持ち上げる
-    <<jump FindKey>>
+<<if $flag_painting_seen>>
+    <<jump PaintingRecall>>
+<<else>>
+    <<jump PaintingFirst>>
+<<endif>>
+===
+
+title: PaintingFirst
+---
+壁に 古びた 額縁が かけられている。
+中の 紙には 大きく ３つの 記号が…
+ぼく: 「△　×　○」
+ぼく: なんだろう、これは…
+<<if $flag_drawer_searched>>
+    ぼく: もしかして、あの 金庫の 合言葉 かも しれない。
+<<else>>
+    ぼく: 何かの 暗号 だろうか。
+    ぼく: とりあえず 覚えておこう。
+<<endif>>
+<<flag set painting_seen>>
+===
+
+title: PaintingRecall
+---
+ぼく: 額縁の 紙には 「△　×　○」と 書かれている。
+===
+
+title: Hotspot_demo_room_safe
+---
+<<if not is_locked("safe")>>
+    <<jump SafeAlreadyOpen>>
+<<endif>>
+ぼく: 古びた 金庫だ。
+ぼく: ３つの 記号を 合わせる ダイヤルが ついている。
+-> 合わせてみる
+    <<jump SafeSlot1>>
 -> やめておく
-    ぼく: …今は やめておくか。
+    ぼく: …今は やめておこう。
 ===
 
-title: FindKey
+title: SafeSlot1
+---
+ぼく: １つ目の しるしは…
+-> △
+    <<set $safe_slot_1 = "tri">>
+    <<jump SafeSlot2>>
+-> ○
+    <<set $safe_slot_1 = "cir">>
+    <<jump SafeSlot2>>
+-> ×
+    <<set $safe_slot_1 = "x">>
+    <<jump SafeSlot2>>
+===
+
+title: SafeSlot2
+---
+ぼく: ２つ目の しるしは…
+-> △
+    <<set $safe_slot_2 = "tri">>
+    <<jump SafeSlot3>>
+-> ○
+    <<set $safe_slot_2 = "cir">>
+    <<jump SafeSlot3>>
+-> ×
+    <<set $safe_slot_2 = "x">>
+    <<jump SafeSlot3>>
+===
+
+title: SafeSlot3
+---
+ぼく: ３つ目の しるしは…
+-> △
+    <<set $safe_slot_3 = "tri">>
+    <<jump SafeCheck>>
+-> ○
+    <<set $safe_slot_3 = "cir">>
+    <<jump SafeCheck>>
+-> ×
+    <<set $safe_slot_3 = "x">>
+    <<jump SafeCheck>>
+===
+
+title: SafeCheck
+---
+<<if $safe_slot_1 == "tri" and $safe_slot_2 == "x" and $safe_slot_3 == "cir">>
+    <<jump SafeOpen>>
+<<else>>
+    <<jump SafeWrong>>
+<<endif>>
+===
+
+title: SafeOpen
 ---
 <<se chest>>
+<<wait 0.4>>
+カチャリ。
 <<wait 0.3>>
-底板を そっと 外すと、
-下から 古びた 鍵が 出てきた。
+金庫が ゆっくりと 開く。
+中には 古びた 鍵が 入っていた。
 <<inv add demo_key>>
-<<flag set key_taken>>
+<<hotspot unlock safe>>
 ぼく: これだ！
 ぼく: あの ドアを 開けられる かも しれない。
 ぼく: インベントリから 鍵を 選んで、
 ドアに 使ってみよう。
+===
+
+title: SafeWrong
+---
+<<se locked>>
+<<shake 0.2>>
+ガチャッ。
+ぼく: …違う ようだ。
+<<if $flag_painting_seen and $flag_drawer_searched>>
+    ぼく: もう一度 額縁の 記号を 確かめよう。
+<<elseif $flag_drawer_searched>>
+    ぼく: ヒントは どこかに あるはずだ。
+<<else>>
+    ぼく: そもそも 何か 手がかりは ないだろうか。
+<<endif>>
+===
+
+title: SafeAlreadyOpen
+---
+ぼく: 金庫は すでに 開いている。中は 空だ。
 ===
 
 title: Hotspot_demo_room_door
@@ -106,12 +205,12 @@ title: DoorLocked
 ぼく: 鍵が かかっている。
 <<if visited_count("DoorLocked") > 1>>
     ぼく: 何度 試しても 同じだ。
-    ぼく: 鍵を 探さないと。
+    ぼく: あの 金庫を 開ける 方法を 探そう。
 <<elseif $flag_drawer_searched>>
-    ぼく: あの 引き出しの メモが 気になる。
-    ぼく: もう一度 調べてみるか。
+    ぼく: 引き出しの メモには 金庫の こと…
+    ぼく: 合言葉さえ わかれば 開ける はずだ。
 <<else>>
-    ぼく: 部屋の 中に 何か 道具が あるはずだ。
+    ぼく: 部屋の 中に 何か 手がかりが あるはずだ。
 <<endif>>
 ===
 

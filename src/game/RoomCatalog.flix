@@ -60,7 +60,11 @@ mod Game.RoomCatalog {
     // 静的データ
     // ════════════════════════════════════════════════════════════════════════
 
-    /// デモ部屋 1。引き出し (drawer) と ドア (door) の 2 ホットスポット。
+    /// デモ部屋 1。引き出し / 額縁 / 金庫 / ドア の 4 ホットスポット。
+    /// - drawer : 金庫を示唆するヒントメモが入っている
+    /// - painting: 壁の額縁。金庫の合言葉となる記号並びが書かれている
+    /// - safe   : 3 記号錠つき金庫。開錠すると鍵が出る (`initiallyLocked = true`)
+    /// - door   : 出口。鍵で開ける
     /// 座標・サイズは `RoomScene.scene.json` で定義。エディタで調整可。
     def demoRoom(): RoomDef = {
         id        = "demo_room",
@@ -68,6 +72,12 @@ mod Game.RoomCatalog {
         hotspots  =
             ({id = "drawer",
               initiallyLocked  = false,
+              initiallyVisible = true}: HotspotDef) ::
+            ({id = "painting",
+              initiallyLocked  = false,
+              initiallyVisible = true}: HotspotDef) ::
+            ({id = "safe",
+              initiallyLocked  = true,
               initiallyVisible = true}: HotspotDef) ::
             ({id = "door",
               initiallyLocked  = true,

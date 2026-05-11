@@ -32,6 +32,36 @@
     },
     {
       "monitoring": true,
+      "name": "Hotspot_painting",
+      "pos": [
+        220,
+        70
+      ],
+      "shape": {
+        "height": 60.0,
+        "kind": "RectShape2D",
+        "width": 70.0
+      },
+      "tag": "Hotspot:painting",
+      "type": "Area2D"
+    },
+    {
+      "monitoring": true,
+      "name": "Hotspot_safe",
+      "pos": [
+        260,
+        230
+      ],
+      "shape": {
+        "height": 70.0,
+        "kind": "RectShape2D",
+        "width": 70.0
+      },
+      "tag": "Hotspot:safe",
+      "type": "Area2D"
+    },
+    {
+      "monitoring": true,
       "name": "Hotspot_door",
       "pos": [
         363,
